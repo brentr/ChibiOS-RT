@@ -25,17 +25,20 @@
 #ifndef _CHPRINTF_H_
 #define _CHPRINTF_H_
 
+#include <stdarg.h>
+
 /**
  * @brief   Float type support.
  */
 #if !defined(CHPRINTF_USE_FLOAT) || defined(__DOXYGEN__)
-#define CHPRINTF_USE_FLOAT          FALSE
+#define CHPRINTF_USE_FLOAT          TRUE
 #endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
   void chprintf(BaseSequentialStream *chp, const char *fmt, ...);
+  void chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap);
 #ifdef __cplusplus
 }
 #endif

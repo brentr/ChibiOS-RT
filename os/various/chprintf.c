@@ -107,6 +107,12 @@ static char *ftoa(char *p, double num) {
  */
 void chprintf(BaseSequentialStream *chp, const char *fmt, ...) {
   va_list ap;
+  va_start(ap, fmt);
+  chvprintf(chp, fmt, ap);
+  va_end(ap);
+}
+
+void chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
   char *p, *s, c, filler;
   int i, precision, width;
   bool_t is_long, left_align;
@@ -118,13 +124,10 @@ void chprintf(BaseSequentialStream *chp, const char *fmt, ...) {
   char tmpbuf[MAX_FILLER + 1];
 #endif
 
-  va_start(ap, fmt);
   while (TRUE) {
     c = *fmt++;
-    if (c == 0) {
-      va_end(ap);
+    if (c == 0)
       return;
-    }
     if (c != '%') {
       chSequentialStreamPut(chp, (uint8_t)c);
       continue;
