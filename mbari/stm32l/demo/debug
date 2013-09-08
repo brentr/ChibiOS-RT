@@ -5,7 +5,7 @@ cd `dirname $0`
 : ${binary:=build/ch.elf}
 : ${targetLog:=target.log}
 [ $GDBstart ] || make || exit $?
-: ${GDBstart:=../start.gdb}
+: ${GDBstart:=start.gdb}
 : ${GDB:=/cortex/bin/gdb}
 
 openocd --log $targetLog &

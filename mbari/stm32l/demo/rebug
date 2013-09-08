@@ -1,2 +1,2 @@
 #!/bin/sh
-GDBstart=../restart.gdb exec debug
+GDBstart=restart.gdb exec debug
