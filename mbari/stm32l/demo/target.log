@@ -1,6 +1,0 @@
-Runtime Error: openocd.cfg:1: couldn't read file "../stm32l-discddovery.cfg": No such file or directory
-in procedure 'script' 
-at file "embedded:startup.tcl", line 58
-at file "openocd.cfg", line 1
-Error: Debug Adapter has to be specified, see "interface" command
-in procedure 'init'
