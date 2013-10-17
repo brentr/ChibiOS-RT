@@ -37,11 +37,17 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-  void chprintf(BaseSequentialStream *chp, const char *fmt, ...);
   void chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap);
 #ifdef __cplusplus
 }
 #endif
+
+static INLINE void chprintf(BaseSequentialStream *chp, const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  chvprintf(chp, fmt, ap);
+  va_end(ap);
+}
 
 #endif /* _CHPRINTF_H_ */
 

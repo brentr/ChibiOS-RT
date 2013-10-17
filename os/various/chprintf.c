@@ -15,6 +15,7 @@
 */
 /*
    Concepts and parts of this file have been contributed by Fabio Utzig.
+   chvprintf() added by Brent Roman.
  */
 
 /**
@@ -105,12 +106,6 @@ static char *ftoa(char *p, double num) {
  * @param[in] chp       pointer to a @p BaseSequentialStream implementing object
  * @param[in] fmt       formatting string
  */
-void chprintf(BaseSequentialStream *chp, const char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  chvprintf(chp, fmt, ap);
-  va_end(ap);
-}
 
 void chvprintf(BaseSequentialStream *chp, const char *fmt, va_list ap) {
   char *p, *s, c, filler;
