@@ -856,15 +856,6 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   dmaStreamSetMemory0(i2cp->dmarx, rxbuf);
   dmaStreamSetTransactionSize(i2cp->dmarx, rxbytes);
 
-  /* Waits until BUSY flag is reset and the STOP from the previous operation
-     is completed, alternatively for a timeout condition.*/
-  while ((dp->SR2 & I2C_SR2_BUSY) || (dp->CR1 & I2C_CR1_STOP)) {
-    chSysLock();
-    if ((timeout != TIME_INFINITE) && !chVTIsArmedI(&vt))
-      return RDY_TIMEOUT;
-    chSysUnlock();
-  }
-
   /* This lock will be released in high level driver.*/
   chSysLock();
 
