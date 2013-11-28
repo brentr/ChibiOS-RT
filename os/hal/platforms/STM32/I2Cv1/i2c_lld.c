@@ -202,9 +202,11 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
                 "Invalid standard mode duty cycle");
 
     /* Standard mode clock_div calculate: Tlow/Thigh = 1/1.*/
+#ifndef STM32_I2C_LOOSE_CLK
     chDbgAssert((STM32_PCLK1 % (clock_speed * 2)) == 0,
                 "i2c_lld_set_clock(), #2",
-                "PCLK1 must be divided without remainder");
+                "PCLK1 not divisible by 2*I2Cclk");
+#endif
     clock_div = (uint16_t)(STM32_PCLK1 / (clock_speed * 2));
 
     chDbgAssert(clock_div >= 0x04,
@@ -215,30 +217,37 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
     /* Sets the Maximum Rise Time for standard mode.*/
     dp->TRISE = I2C_CLK_FREQ + 1;
   }
-  else if (clock_speed <= 400000) {
+  else {
+    chDbgAssert((clock_speed <= 400000),
+                "i2c_lld_set_clock(), #4",
+                "I2Cclk too fast");
     /* Configure clock_div in fast mode.*/
     chDbgAssert((duty == FAST_DUTY_CYCLE_2) || (duty == FAST_DUTY_CYCLE_16_9),
-                "i2c_lld_set_clock(), #4",
+                "i2c_lld_set_clock(), #5",
                 "Invalid fast mode duty cycle");
 
     if (duty == FAST_DUTY_CYCLE_2) {
       /* Fast mode clock_div calculate: Tlow/Thigh = 2/1.*/
+#ifndef STM32_I2C_LOOSE_CLK
       chDbgAssert((STM32_PCLK1 % (clock_speed * 3)) == 0,
-                  "i2c_lld_set_clock(), #5",
-                  "PCLK1 must be divided without remainder");
+                  "i2c_lld_set_clock(), #6",
+                  "PCLK1 not divisible by 3*I2Cclk");
+#endif
       clock_div = (uint16_t)(STM32_PCLK1 / (clock_speed * 3));
     }
     else if (duty == FAST_DUTY_CYCLE_16_9) {
       /* Fast mode clock_div calculate: Tlow/Thigh = 16/9.*/
+#ifndef STM32_I2C_LOOSE_CLK
       chDbgAssert((STM32_PCLK1 % (clock_speed * 25)) == 0,
-                  "i2c_lld_set_clock(), #6",
-                  "PCLK1 must be divided without remainder");
+                  "i2c_lld_set_clock(), #7",
+                  "PCLK1 not divisible by 25*I2Cclk");
+#endif
       clock_div = (uint16_t)(STM32_PCLK1 / (clock_speed * 25));
       regCCR |= I2C_CCR_DUTY;
     }
 
     chDbgAssert(clock_div >= 0x01,
-                    "i2c_lld_set_clock(), #7",
+                    "i2c_lld_set_clock(), #8",
                     "Clock divider less then 0x04 not allowed");
     regCCR |= (I2C_CCR_FS | (clock_div & I2C_CCR_CCR));
 
@@ -247,7 +256,7 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
   }
 
   chDbgAssert((clock_div <= I2C_CCR_CCR),
-              "i2c_lld_set_clock(), #8", "the selected clock is too low");
+              "i2c_lld_set_clock(), #9", "I2Cclk is too slow");
 
   dp->CCR = regCCR;
 }
