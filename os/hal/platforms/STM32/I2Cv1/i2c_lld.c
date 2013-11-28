@@ -674,9 +674,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
   dmaStreamSetPeripheral(i2cp->dmarx, &dp->DR);
   dmaStreamSetPeripheral(i2cp->dmatx, &dp->DR);
 
-  /* Reset i2c peripheral.*/
-  dp->CR1 = I2C_CR1_SWRST;
-  dp->CR1 = 0;
+  /* Enable interrrupts */
   dp->CR2 = I2C_CR2_ITERREN | I2C_CR2_DMAEN;
 
   /* Setup I2C parameters.*/
@@ -778,15 +776,6 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
   dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
   dmaStreamSetMemory0(i2cp->dmarx, rxbuf);
   dmaStreamSetTransactionSize(i2cp->dmarx, rxbytes);
-
-  /* Waits until BUSY flag is reset and the STOP from the previous operation
-     is completed, alternatively for a timeout condition.*/
-  while ((dp->SR2 & I2C_SR2_BUSY) || (dp->CR1 & I2C_CR1_STOP)) {
-    chSysLock();
-    if ((timeout != TIME_INFINITE) && !chVTIsArmedI(&vt))
-      return RDY_TIMEOUT;
-    chSysUnlock();
-  }
 
   /* This lock will be released in high level driver.*/
   chSysLock();
