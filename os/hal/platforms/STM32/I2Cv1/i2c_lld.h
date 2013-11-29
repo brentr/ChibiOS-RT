@@ -387,6 +387,22 @@ struct I2CDriver {
    */
   i2caddr_t                 addr;
   /**
+   * @brief Master RX DMA buffer size.
+   */
+  size_t                    masterRxbytes;
+  /**
+   * @brief Master RX DMA buffer base.
+   */
+  uint8_t                   *masterRxbuf;
+  /**
+   * @brief Master TX DMA buffer size.
+   */
+  size_t                    masterTxbytes;
+  /**
+   * @brief Master TX DMA buffer base.
+   */
+  const uint8_t             *masterTxbuf;
+  /**
    * @brief RX DMA mode bit mask.
    */
   uint32_t                  rxdmamode;

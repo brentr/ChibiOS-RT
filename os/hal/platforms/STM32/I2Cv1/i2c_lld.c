@@ -310,6 +310,10 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     break;
   case I2C_EV6_MASTER_REC_MODE_SELECTED:
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
+    /* RX DMA setup.*/
+    dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
+    dmaStreamSetMemory0(i2cp->dmarx, i2cp->masterRxbuf);
+    dmaStreamSetTransactionSize(i2cp->dmarx, i2cp->masterRxbytes);
     dmaStreamEnable(i2cp->dmarx);
     dp->CR2 |= I2C_CR2_LAST;                 /* Needed in receiver mode. */
     if (dmaStreamGetTransactionSize(i2cp->dmarx) < 2)
@@ -317,11 +321,15 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     break;
   case I2C_EV6_MASTER_TRA_MODE_SELECTED:
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
+    /* TX DMA setup.*/
+    dmaStreamSetMode(i2cp->dmarx, i2cp->txdmamode);
+    dmaStreamSetMemory0(i2cp->dmarx, i2cp->masterTxbuf);
+    dmaStreamSetTransactionSize(i2cp->dmarx, i2cp->masterTxbytes);
     dmaStreamEnable(i2cp->dmatx);
     break;
   case I2C_EV8_2_MASTER_BYTE_TRANSMITTED:
     /* Catches BTF event after the end of transmission.*/
-    if (dmaStreamGetTransactionSize(i2cp->dmarx) > 0) {
+    if (i2cp->masterRxbytes > 0) {
       /* Starts "read after write" operation, LSB = 1 -> receive.*/
       i2cp->addr |= 0x01;
       dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
@@ -774,25 +782,13 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
   if (timeout != TIME_INFINITE)
     chVTSetI(&vt, timeout, i2c_lld_safety_timeout, (void *)i2cp);
 
-  /* Releases the lock from high level driver.*/
-  chSysUnlock();
-
   /* Initializes driver fields, LSB = 1 -> receive.*/
   i2cp->addr = (addr << 1) | 0x01;
   i2cp->errors = 0;
 
-  /* RX DMA setup.*/
-  dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
-  dmaStreamSetMemory0(i2cp->dmarx, rxbuf);
-  dmaStreamSetTransactionSize(i2cp->dmarx, rxbytes);
-
-  /* This lock will be released in high level driver.*/
-  chSysLock();
-
-  /* Atomic check on the timer in order to make sure that a timeout didn't
-     happen outside the critical zone.*/
-  if ((timeout != TIME_INFINITE) && !chVTIsArmedI(&vt))
-    return RDY_TIMEOUT;
+  /* store away DMA info for later activation in event ISR */
+  i2cp->masterRxbuf = rxbuf;
+  i2cp->masterRxbytes = rxbytes;
 
   /* Starts the operation.*/
   dp->CR2 |= I2C_CR2_ITEVTEN;
@@ -848,30 +844,15 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   if (timeout != TIME_INFINITE)
     chVTSetI(&vt, timeout, i2c_lld_safety_timeout, (void *)i2cp);
 
-  /* Releases the lock from high level driver.*/
-  chSysUnlock();
-
   /* Initializes driver fields, LSB = 0 -> write.*/
   i2cp->addr = addr << 1;
   i2cp->errors = 0;
 
-  /* TX DMA setup.*/
-  dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
-  dmaStreamSetMemory0(i2cp->dmatx, txbuf);
-  dmaStreamSetTransactionSize(i2cp->dmatx, txbytes);
-
-  /* RX DMA setup.*/
-  dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
-  dmaStreamSetMemory0(i2cp->dmarx, rxbuf);
-  dmaStreamSetTransactionSize(i2cp->dmarx, rxbytes);
-
-  /* This lock will be released in high level driver.*/
-  chSysLock();
-
-  /* Atomic check on the timer in order to make sure that a timeout didn't
-     happen outside the critical zone.*/
-  if ((timeout != TIME_INFINITE) && !chVTIsArmedI(&vt))
-    return RDY_TIMEOUT;
+  /* store away DMA info for later activation in event ISR */
+  i2cp->masterTxbuf = txbuf;
+  i2cp->masterTxbytes = txbytes;
+  i2cp->masterRxbuf = rxbuf;
+  i2cp->masterRxbytes = rxbytes;
 
   /* Starts the operation.*/
   dp->CR2 |= I2C_CR2_ITEVTEN;
