@@ -774,6 +774,8 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
   I2C_TypeDef *dp = i2cp->i2c;
   VirtualTimer vt;
 
+  chDbgAssert((rxbytes < (1<<16)),
+                "i2c_lld_master_receive_timeout(), #1", ">64Kbytes");
 #if defined(STM32F1XX_I2C)
   chDbgCheck((rxbytes > 1), "i2c_lld_master_receive_timeout");
 #endif
@@ -788,7 +790,7 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
 
   /* store away DMA info for later activation in event ISR */
   i2cp->masterRxbuf = rxbuf;
-  i2cp->masterRxbytes = rxbytes;
+  i2cp->masterRxbytes = (uint16_t) rxbytes;
 
   /* Starts the operation.*/
   dp->CR2 |= I2C_CR2_ITEVTEN;
@@ -835,6 +837,8 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   I2C_TypeDef *dp = i2cp->i2c;
   VirtualTimer vt;
 
+  chDbgAssert(((rxbytes | txbytes) < (1<<16)),
+                "i2c_lld_master_transmit_timeout(), #1", ">64Kbytes")
 #if defined(STM32F1XX_I2C)
   chDbgCheck(((rxbytes == 0) || ((rxbytes > 1) && (rxbuf != NULL))),
              "i2c_lld_master_transmit_timeout");
@@ -850,9 +854,9 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
 
   /* store away DMA info for later activation in event ISR */
   i2cp->masterTxbuf = txbuf;
-  i2cp->masterTxbytes = txbytes;
+  i2cp->masterTxbytes = (uint16_t) txbytes;
   i2cp->masterRxbuf = rxbuf;
-  i2cp->masterRxbytes = rxbytes;
+  i2cp->masterRxbytes = (uint16_t) rxbytes;
 
   /* Starts the operation.*/
   dp->CR2 |= I2C_CR2_ITEVTEN;
