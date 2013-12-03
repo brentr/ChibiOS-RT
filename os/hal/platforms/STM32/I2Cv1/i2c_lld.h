@@ -348,6 +348,53 @@ typedef struct {
  */
 typedef struct I2CDriver I2CDriver;
 
+
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+
+typedef struct I2CSlaveMsg I2CSlaveMsg;
+
+I2CSlaveMsg *i2cSlaveGetReceiveMsg(I2CDriver *i2cp);
+/*
+  returns the current I2C slave message receive configuration
+*/
+
+
+I2CSlaveMsg *i2cSlaveGetReplyMsg(I2CDriver *i2cp);
+/*
+  returns the current I2C slave message reply configuration
+*/
+
+
+typedef void
+  I2CSlaveMsgCB(I2CDriver *i2cp);
+/*
+  I2C Slave Message Call Back.
+  Invoked from interrupt context just after
+  the last byte of the message is transferred or slaveAdr is matched.
+
+  Use i2cSlaveGetReceiveMsg() or i2cSlaveGetReplyMsg() to access
+  the relevant message handling configuration
+*/
+
+
+/*
+  I2CSlaveMsg message handling configurations are normally
+  stored in read-only memory.
+  They describe either a buffer to contain incoming messages from
+  a bus master and associated callback functions, or one
+  preloaded with an outgoing reply to a read request and its callbacks.
+*/
+
+struct I2CSlaveMsg {
+  size_t     size;     /* sizeof(body) */
+  uint8_t   *body;     /* message contents */
+  size_t    *length;   /* ptr to number of bytes actually transferred or NULL */
+  I2CSlaveMsgCB *processMsg;  /* invoked after message is transferred */
+  I2CSlaveMsgCB *adrMatched;  /* invoked earlier, when slave address matches */
+};
+#endif  /* HAL_USE_I2C_SLAVE */
+
+
 /**
  * @brief Structure representing an I2C driver.
  */
@@ -389,11 +436,11 @@ struct I2CDriver {
   /**
    * @brief Master RX DMA buffer size.
    */
-  uint16_t                    masterRxbytes;
+  uint16_t                  masterRxbytes;
   /**
    * @brief Master TX DMA buffer size.
    */
-  uint16_t                    masterTxbytes;
+  uint16_t                  masterTxbytes;
   /**
    * @brief Master RX DMA buffer base.
    */
@@ -422,6 +469,34 @@ struct I2CDriver {
    * @brief     Pointer to the I2Cx registers block.
    */
   I2C_TypeDef               *i2c;
+   
+#if HAL_USE_I2C_SLAVE
+  /* additional fields to support I2C slave transactions */
+  const I2CSlaveMsg         *slaveRx;
+  /**
+   * @brief     Pointer to slave message reception handler
+   */  
+  const I2CSlaveMsg         *slaveReply;
+  /**
+   * @brief     Pointer to slave message Reply handler
+   */  
+  const I2CSlaveMsg         *slaveNextRx;
+  /**
+   * @brief     Pointer to handler for next slave received message
+   */  
+  const I2CSlaveMsg         *slaveNextReply;
+  /**
+   * @brief     Pointer to handler for next slave reply message
+   */
+  i2caddr_t                 targetAdr;
+  /**
+   * @brief     Most recently matched slave address
+   */
+  enum  {not, awaitingRx, awaitingReply}  stuck;
+  /**
+   * @brief     Most recent event interrupt serviced
+   */
+  #endif
 };
 
 /*===========================================================================*/
@@ -468,6 +543,15 @@ extern "C" {
   msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
                                        uint8_t *rxbuf, size_t rxbytes,
                                        systime_t timeout);
+
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+  msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
+  void  i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
+  void  i2c_lld_unmatchAll(I2CDriver *i2cp);
+  void  i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
+  void  i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
+#endif /* HAL_USE_I2C_SLAVE */
+
 #ifdef __cplusplus
 }
 #endif

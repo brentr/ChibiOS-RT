@@ -60,7 +60,7 @@
                        STM32_I2C3_TX_DMA_CHN)
 
 /*===========================================================================*/
-/* Driver constants.                                                         */
+/* Driver constants -- see ST document RM0038 figure 208                     */
 /*===========================================================================*/
 
 #define I2C_EV5_MASTER_MODE_SELECT                                          \
@@ -77,7 +77,23 @@
   ((uint32_t)(((I2C_SR2_MSL | I2C_SR2_BUSY | I2C_SR2_TRA) << 16) |          \
               I2C_SR1_BTF | I2C_SR1_TXE))
 
-#define I2C_EV_MASK 0x00FFFFFF
+#if HAL_USE_I2C_SLAVE
+#define I2C_EV1_SLAVE_RXADRMATCH  \
+  ((uint32_t)((I2C_SR2_BUSY << 16)  | I2C_SR1_ADDR))
+
+#define I2C_EV1_SLAVE_TXADRMATCH  \
+  ((uint32_t)(((I2C_SR2_BUSY|I2C_SR2_TRA) << 16)  | I2C_SR1_ADDR))
+
+#define I2C_EV2_SLAVE_RXSTOP \
+  ((uint32_t)(((I2C_SR2_GENCALL|I2C_SR2_BUSY) << 16)  | I2C_SR1_STOPF))
+
+#define I2C_EV3_2_SLAVE_TXNACK \
+  ((uint32_t)(((I2C_SR2_GENCALL|I2C_SR2_BUSY) << 16)  | I2C_SR1_AF))
+#endif
+
+#define I2C_EV_MASK (  \
+  ((I2C_SR2_BUSY|I2C_SR2_MSL|I2C_SR2_TRA)<<16) |      \
+  (I2C_SR1_SB|I2C_SR1_ADDR|I2C_SR1_STOPF|I2C_SR1_AF))
 
 #define I2C_ERROR_MASK                                                      \
   ((uint16_t)(I2C_SR1_BERR | I2C_SR1_ARLO | I2C_SR1_AF | I2C_SR1_OVR |      \
@@ -140,14 +156,15 @@ static void i2c_lld_abort_operation(I2CDriver *i2cp) {
   I2C_TypeDef *dp = i2cp->i2c;
 
   /* Stops the I2C peripheral.*/
-  dp->CR1 = I2C_CR1_SWRST;
-  dp->CR1 = 0;
-  dp->CR2 = 0;
-  dp->SR1 = 0;
+  dp->CR1 |= I2C_CR1_ACK | I2C_CR1_PE | I2C_CR1_SWRST;
 
   /* Stops the associated DMA streams.*/
   dmaStreamDisable(i2cp->dmatx);
   dmaStreamDisable(i2cp->dmarx);
+
+  dp->CR1 &= I2C_CR1_ACK | I2C_CR1_PE | I2C_CR1_ENGC;
+  dp->CR2 |= I2C_CR2_ITERREN | I2C_CR2_DMAEN | I2C_CR2_ITEVTEN;
+  dp->SR1 = 0;
 }
 
 /**
@@ -289,6 +306,26 @@ static void i2c_lld_set_opmode(I2CDriver *i2cp) {
   dp->CR1 = regCR1;
 }
 
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+/**
+ * @brief   return the address matched
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] sr2       I2C SR2 register contents
+ *
+ * @notapi
+ *   Only supports 7-bit addressing for now
+ */
+static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
+  if (sr2 & I2C_SR2_GENCALL)
+    return 0;
+  if (sr2 & I2C_SR2_DUALF)
+    return (dp->OAR2>>1) & 0x7f;
+  return (dp->OAR1>>1) & 0x7f;
+}
+#endif
+
+
 /**
  * @brief   I2C shared ISR code.
  *
@@ -299,12 +336,92 @@ static void i2c_lld_set_opmode(I2CDriver *i2cp) {
 static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   I2C_TypeDef *dp = i2cp->i2c;
   uint32_t regSR2 = dp->SR2;
-  uint32_t event = dp->SR1;
+  uint32_t event = dp->SR1 | (regSR2 << 16);
 
   /* Interrupts are disabled just before dmaStreamEnable() because there
      is no need of interrupts until next transaction begin. All the work is
      done by the DMA.*/
-  switch (I2C_EV_MASK & (event | (regSR2 << 16))) {
+  switch (event & I2C_EV_MASK) {
+
+#if HAL_USE_I2C_SLAVE
+  case I2C_EV1_SLAVE_RXADRMATCH:
+    {
+      i2cp->targetAdr = matchedAdr(dp, regSR2);
+      const I2CSlaveMsg *rx = i2cp->slaveRx;
+      if (rx) {
+        if (rx->adrMatched)
+          rx->adrMatched(i2cp);
+        rx = i2cp->slaveRx = i2cp->slaveNextRx;
+        if (rx) {
+           /* slave RX DMA setup.*/
+          dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
+          dmaStreamSetMemory0(i2cp->dmarx, rx->body);
+          dmaStreamSetTransactionSize(i2cp->dmarx, rx->size);
+          dmaStreamEnable(i2cp->dmarx);
+          if (rx->length)
+            *rx->length = 0;
+        }else
+          i2cp->stuck = awaitingRx;
+      }else
+          i2cp->stuck = awaitingRx;
+    }
+    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
+    break;
+  case I2C_EV2_SLAVE_RXSTOP:
+    {
+      const I2CSlaveMsg *rx = i2cp->slaveRx;
+      if (rx->length) {
+        size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
+        if (*rx->length)
+          *rx->length += 0xffff - bytesRemaining;
+        else
+          *rx->length = rx->size - bytesRemaining;
+      }
+      if (rx->processMsg)
+        rx->processMsg(i2cp);
+      i2cp->slaveRx = i2cp->slaveNextRx;
+    }
+    break;
+  case I2C_EV1_SLAVE_TXADRMATCH:
+    {
+      i2cp->targetAdr = matchedAdr(dp, regSR2);
+      const I2CSlaveMsg *reply = i2cp->slaveReply;
+      if (reply) {
+        if (reply->adrMatched)
+          reply->adrMatched(i2cp);
+        reply = i2cp->slaveRx = i2cp->slaveNextRx;
+        if (reply) {
+          /* slave TX DMA setup.*/
+          dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
+          dmaStreamSetMemory0(i2cp->dmatx, reply->body);
+          dmaStreamSetTransactionSize(i2cp->dmatx, reply->size);
+          dmaStreamEnable(i2cp->dmatx);
+          if (reply->length)
+            *reply->length = 0;
+        }else
+          i2cp->stuck = awaitingReply;
+      }else
+          i2cp->stuck = awaitingReply;
+    }
+    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
+    break;
+  case I2C_EV3_2_SLAVE_TXNACK:
+    {
+      const I2CSlaveMsg *reply = i2cp->slaveReply;
+      if (reply->length) {
+        size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx);
+        if (*reply->length)
+          *reply->length += 0xffff - bytesRemaining;
+        else
+          *reply->length = reply->size - bytesRemaining;
+      }
+      if (reply->processMsg)
+        reply->processMsg(i2cp);
+      i2cp->slaveReply = i2cp->slaveNextReply;
+    }
+    break;
+#endif  /* HAL_USE_I2C_SLAVE */
+
   case I2C_EV5_MASTER_MODE_SELECT:
     dp->DR = i2cp->addr;
     break;
@@ -318,14 +435,16 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     dp->CR2 |= I2C_CR2_LAST;                 /* Needed in receiver mode. */
     if (dmaStreamGetTransactionSize(i2cp->dmarx) < 2)
       dp->CR1 &= ~I2C_CR1_ACK;
+    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     break;
   case I2C_EV6_MASTER_TRA_MODE_SELECTED:
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* TX DMA setup.*/
-    dmaStreamSetMode(i2cp->dmarx, i2cp->txdmamode);
-    dmaStreamSetMemory0(i2cp->dmarx, i2cp->masterTxbuf);
-    dmaStreamSetTransactionSize(i2cp->dmarx, i2cp->masterTxbytes);
+    dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
+    dmaStreamSetMemory0(i2cp->dmatx, i2cp->masterTxbuf);
+    dmaStreamSetTransactionSize(i2cp->dmatx, i2cp->masterTxbytes);
     dmaStreamEnable(i2cp->dmatx);
+    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     break;
   case I2C_EV8_2_MASTER_BYTE_TRANSMITTED:
     /* Catches BTF event after the end of transmission.*/
@@ -335,16 +454,11 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
       dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
       return;
     }
-    dp->CR2 &= ~I2C_CR2_ITEVTEN;
-    dp->CR1 |= I2C_CR1_STOP;
+    dp->CR2 |= I2C_CR2_ITEVTEN;
+    dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
     wakeup_isr(i2cp, RDY_OK);
     break;
-  default:
-    break;
   }
-  /* Clear ADDR flag. */
-  if (event & (I2C_SR1_ADDR | I2C_SR1_ADD10))
-    (void)dp->SR2;
 }
 
 /**
@@ -369,9 +483,27 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
 
   dmaStreamDisable(i2cp->dmarx);
 
+#if HAL_USE_I2C_SLAVE
+  if (!(dp->SR2 & I2C_SR2_MSL)) {
+    static uint8_t bitbucket;
+    const I2CSlaveMsg *rx = i2cp->slaveRx;
+    if (rx->length) {
+      if (*rx->length)
+        *rx->length += 0xffff;
+      else
+        *rx->length = rx->size;
+    }
+    /* discard data overrunning available rx buffer, but record total length */
+    dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode & ~STM32_DMA_CR_MINC);
+    dmaStreamSetMemory0(i2cp->dmarx, &bitbucket);
+    dmaStreamSetTransactionSize(i2cp->dmarx, 0xffff);
+    dmaStreamEnable(i2cp->dmarx);
+    return;
+  }
+#endif
+
   dp->CR2 &= ~I2C_CR2_LAST;
-  dp->CR1 &= ~I2C_CR1_ACK;
-  dp->CR1 |= I2C_CR1_STOP;
+  dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
   wakeup_isr(i2cp, RDY_OK);
 }
 
@@ -393,8 +525,26 @@ static void i2c_lld_serve_tx_end_irq(I2CDriver *i2cp, uint32_t flags) {
 #else
   (void)flags;
 #endif
-
   dmaStreamDisable(i2cp->dmatx);
+
+#if HAL_USE_I2C_SLAVE
+  if (!(dp->SR2 & I2C_SR2_MSL)) {
+    const I2CSlaveMsg *reply = i2cp->slaveReply;
+    if (reply->length) {
+      if (*reply->length)
+        *reply->length += 0xffff;
+      else
+        *reply->length = reply->size;
+    }
+    /* repeat the last byte in the reply */
+    dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode & ~STM32_DMA_CR_MINC);
+    dmaStreamSetMemory0(i2cp->dmatx, reply->body+reply->size-1);
+    dmaStreamSetTransactionSize(i2cp->dmatx, 0xffff);
+    dmaStreamEnable(i2cp->dmatx);
+    return;
+  }
+#endif
+
   /* Enables interrupts to catch BTF event meaning transmission part complete.
      Interrupt handler will decide to generate STOP or to begin receiving part
      of R/W transaction itself.*/
@@ -441,7 +591,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
   if (sr & I2C_SR1_SMBALERT)                        /* SMBus alert.         */
     i2cp->errors |= I2CD_SMB_ALERT;
 
-  /* If some error has been identified then sends wakes the waiting thread.*/
+  /* If some error has been identified in master mode, then wake the waiting thread.*/
   if (i2cp->errors != I2CD_NO_ERROR)
     wakeup_isr(i2cp, RDY_RESET);
 }
@@ -599,7 +749,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
                     STM32_DMA_CR_TEIE       | STM32_DMA_CR_TCIE |
                     STM32_DMA_CR_DIR_P2M;
 
-  /* If in stopped state then enables the I2C and DMA clocks.*/
+  /* If in stopped state then enable the I2C and DMA clocks.*/
   if (i2cp->state == I2C_STOP) {
 
 #if STM32_I2C_USE_I2C1
@@ -685,21 +835,27 @@ void i2c_lld_start(I2CDriver *i2cp) {
                        STM32_DMA_CR_PL(STM32_I2C_I2C3_DMA_PRIORITY);
     }
 #endif /* STM32_I2C_USE_I2C3 */
-  }
 
-  /* I2C registers pointed by the DMA.*/
-  dmaStreamSetPeripheral(i2cp->dmarx, &dp->DR);
-  dmaStreamSetPeripheral(i2cp->dmatx, &dp->DR);
+    /* I2C registers pointed by the DMA.*/
+    dmaStreamSetPeripheral(i2cp->dmarx, &dp->DR);
+    dmaStreamSetPeripheral(i2cp->dmatx, &dp->DR);
 
-  /* Enable interrrupts */
-  dp->CR2 = I2C_CR2_ITERREN | I2C_CR2_DMAEN;
+    /* Setup I2C parameters.*/
+    i2c_lld_set_clock(i2cp);
+    i2c_lld_set_opmode(i2cp);
 
-  /* Setup I2C parameters.*/
-  i2c_lld_set_clock(i2cp);
-  i2c_lld_set_opmode(i2cp);
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+    i2cp->slaveRx = i2cp->slaveNextRx =
+    i2cp->slaveReply = i2cp->slaveNextReply = NULL;
+    i2cp->stuck = not;
+    i2cp->targetAdr = 0;
+#endif
 
-  /* Ready to go.*/
-  dp->CR1 |= I2C_CR1_PE;
+    /* Enable interrrupts */
+    dp->CR2 |= I2C_CR2_ITERREN | I2C_CR2_DMAEN | I2C_CR2_ITEVTEN;
+    /* Ready to go.*/
+    dp->CR1 |= I2C_CR1_PE | I2C_CR1_ACK;
+  }  /* ignore start if state is not stopped */
 }
 
 /**
@@ -793,15 +949,11 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
   i2cp->masterRxbytes = (uint16_t) rxbytes;
 
   /* Starts the operation.*/
-  dp->CR2 |= I2C_CR2_ITEVTEN;
   dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
-
-  /* Waits for the operation completion or a timeout.*/
   i2cp->thread = chThdSelf();
   chSchGoSleepS(THD_STATE_SUSPENDED);
   if ((timeout != TIME_INFINITE) && chVTIsArmedI(&vt))
     chVTResetI(&vt);
-
   return chThdSelf()->p_u.rdymsg;
 }
 
@@ -837,11 +989,12 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   I2C_TypeDef *dp = i2cp->i2c;
   VirtualTimer vt;
 
+  if (rxbuf == NULL)
+    rxbytes = 0;
   chDbgAssert(((rxbytes | txbytes) < (1<<16)),
                 "i2c_lld_master_transmit_timeout(), #1", ">64Kbytes")
 #if defined(STM32F1XX_I2C)
-  chDbgCheck(((rxbytes == 0) || ((rxbytes > 1) && (rxbuf != NULL))),
-             "i2c_lld_master_transmit_timeout");
+  chDbgCheck((rxbytes > 1), "i2c_lld_master_transmit_timeout");
 #endif
 
   /* Global timeout for the whole operation.*/
@@ -859,17 +1012,136 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   i2cp->masterRxbytes = (uint16_t) rxbytes;
 
   /* Starts the operation.*/
-  dp->CR2 |= I2C_CR2_ITEVTEN;
-  dp->CR1 |= I2C_CR1_START;
-
-  /* Waits for the operation completion or a timeout.*/
+  dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
   i2cp->thread = chThdSelf();
   chSchGoSleepS(THD_STATE_SUSPENDED);
   if ((timeout != TIME_INFINITE) && chVTIsArmedI(&vt))
     chVTResetI(&vt);
-
   return chThdSelf()->p_u.rdymsg;
 }
+
+
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+
+/* These bits are undocumented, but used in STM32l1xx I2C example driver */
+#define I2C_OAR1_Ack_7bit     (0x4000)  /*enable 7 bit address acknowledge*/
+#define I2C_OAR1_Ack_10bit    (0xC000)  /*enable 10bit address acknowledge*/
+
+msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
+/*
+    Respond to messages directed to the given i2cadr.
+    MatchAddress calls are cumulative.
+    Specify address zero to match I2C "all call"
+
+    Does not support 10-bit addressing.
+*/
+{
+  I2C_TypeDef *dp = i2cp->i2c;
+  if (i2cadr == 0) {
+    dp->CR1 |= I2C_CR1_ENGC;
+    dp->OAR1 |= I2C_OAR1_Ack_7bit;
+  }else{
+    uint16_t adr = i2cadr << 1;
+    uint16_t ownAdr = dp->OAR1 & (0x7f<<1);
+    if (ownAdr == 0 || ownAdr == adr)
+      dp->OAR1 = adr | I2C_OAR1_Ack_7bit;
+    else if (!(dp->OAR2 & I2C_OAR2_ENDUAL))
+      dp->OAR2 = adr | I2C_OAR2_ENDUAL;
+    else if ((dp->OAR2 & (0x7f<<1)) != adr)
+      return -1;    /* cannot add this address to set of those matched */
+  }
+  return RDY_OK;
+}
+
+
+void i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
+/*
+    Do not match specified i2cadr.
+    A message being transferred that has already matched the specified address
+    will continue being processed.
+    Requests to unmatch an address that is not currently being matched
+    are ignored.
+*/
+{
+  I2C_TypeDef *dp = i2cp->i2c;
+  if (i2cadr == 0) {
+    dp->CR1 &= ~I2C_CR1_ENGC;
+    if ((dp->OAR1 & (0x7f<<1)) == 0)
+      dp->OAR1 = 0;
+  }else{
+    uint16_t adr = i2cadr << 1;
+    if ((dp->OAR1 & (0x7f<<1)) == adr) {
+      if (dp->OAR2 & I2C_OAR2_ENDUAL)
+        dp->OAR1 = (dp->OAR2 & (0x7f<<1)) | I2C_OAR1_Ack_7bit;
+      else
+        dp->OAR1 = dp->CR1 & I2C_CR1_ENGC ? I2C_OAR1_Ack_7bit : 0;
+    }else if (dp->OAR2 & I2C_OAR2_ENDUAL && (dp->OAR2 & (0x7f<<1)) == adr)
+      dp->OAR2 &= ~I2C_OAR2_ENDUAL;
+  }
+}
+
+
+void i2c_lld_unmatchAll(I2CDriver *i2cp)
+/*
+    Clears all match addresses.  Causes all subsequent messages to be ignored.
+    A message being transferred that has already matched a slave address
+    will continue being processed.
+*/
+{
+  I2C_TypeDef *dp = i2cp->i2c;
+  dp->CR1 &= ~I2C_CR1_ENGC;
+  dp->OAR1 = 0;
+  dp->OAR2 = 0;
+}
+
+
+void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
+/*
+  Prepare to receive and process I2C messages according to
+  the rxMsg configuration.
+
+  Notes:
+      Does not affect the processing of any message currently being received
+*/
+{
+  chDbgCheck((rxMsg->size-1 < 0xffff), "i2c_lld_slaveReceive");
+  i2cp->slaveNextRx = rxMsg;
+  if (rxMsg && i2cp->stuck == awaitingRx) {
+    i2cp->stuck = not;
+     /* slave RX DMA setup -- we can receive now! */
+    dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
+    dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
+    dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
+    dmaStreamEnable(i2cp->dmarx);
+    if (rxMsg->length)
+      *rxMsg->length = 0;
+  }
+}
+
+void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
+/*
+  Prepare to reply to subsequent I2C read requests from bus masters
+  according to the replyMsg configuration.
+
+  Notes:
+      Does not affect the processing of any message reply being sent
+*/
+{
+  chDbgCheck((replyMsg->size-1 < 0xffff), "i2c_lld_slaveReply");
+  i2cp->slaveNextReply = replyMsg;
+  if (replyMsg && i2cp->stuck == awaitingReply) {
+    i2cp->stuck = not;
+    /* slave TX DMA setup -- we can reply now! */
+    dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
+    dmaStreamSetMemory0(i2cp->dmatx, replyMsg->body);
+    dmaStreamSetTransactionSize(i2cp->dmatx, replyMsg->size);
+    dmaStreamEnable(i2cp->dmatx);
+    if (replyMsg->length)
+      *replyMsg->length = 0;
+  }
+}
+
+#endif /* HAL_USE_I2C_SLAVE */
 
 #endif /* HAL_USE_I2C */
 
