@@ -129,20 +129,21 @@ I2CDriver I2CD3;
 /**
  * @brief   Wakes up the waiting thread.
  *
- * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] tpp       pointer to thread pointer
  * @param[in] msg       wakeup message
  *
  * @notapi
  */
-#define wakeup_isr(i2cp, msg) {                                             \
-  chSysLockFromIsr();                                                       \
-  if ((i2cp)->thread != NULL) {                                             \
-    Thread *tp = (i2cp)->thread;                                            \
-    (i2cp)->thread = NULL;                                                  \
-    tp->p_u.rdymsg = (msg);                                                 \
-    chSchReadyI(tp);                                                        \
-  }                                                                         \
-  chSysUnlockFromIsr();                                                     \
+static INLINE void wakeup_isr(Thread **tpp, msg_t msg)
+{
+  chSysLockFromIsr();
+  Thread *tp = *tpp;
+  if (tp != NULL) {
+    *tpp = NULL;
+    tp->p_u.rdymsg = msg;
+    chSchReadyI(tp);
+  }
+  chSysUnlockFromIsr();
 }
 
 /**
@@ -163,7 +164,7 @@ static void i2c_lld_abort_operation(I2CDriver *i2cp) {
   dmaStreamDisable(i2cp->dmarx);
 
   dp->CR1 &= I2C_CR1_ACK | I2C_CR1_PE | I2C_CR1_ENGC;
-  dp->CR2 |= I2C_CR2_ITERREN | I2C_CR2_DMAEN | I2C_CR2_ITEVTEN;
+  dp->CR2 |= I2C_CR2_ITEVTEN;
   dp->SR1 = 0;
 }
 
@@ -347,6 +348,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   case I2C_EV1_SLAVE_RXADRMATCH:
     {
       i2cp->targetAdr = matchedAdr(dp, regSR2);
+      (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       const I2CSlaveMsg *rx = i2cp->slaveRx;
       if (rx) {
         if (rx->adrMatched)
@@ -360,12 +362,11 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
           dmaStreamEnable(i2cp->dmarx);
           if (rx->length)
             *rx->length = 0;
-        }else
-          i2cp->stuck = awaitingRx;
-      }else
-          i2cp->stuck = awaitingRx;
+          break;
+        }
+      }
+      i2cp->mode = i2cIsAwaitingRx;
     }
-    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     break;
   case I2C_EV2_SLAVE_RXSTOP:
     {
@@ -385,6 +386,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   case I2C_EV1_SLAVE_TXADRMATCH:
     {
       i2cp->targetAdr = matchedAdr(dp, regSR2);
+      (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       const I2CSlaveMsg *reply = i2cp->slaveReply;
       if (reply) {
         if (reply->adrMatched)
@@ -398,12 +400,11 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
           dmaStreamEnable(i2cp->dmatx);
           if (reply->length)
             *reply->length = 0;
-        }else
-          i2cp->stuck = awaitingReply;
-      }else
-          i2cp->stuck = awaitingReply;
+          break;
+        }
+      }
+      i2cp->mode = i2cIsAwaitingReply;
     }
-    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     break;
   case I2C_EV3_2_SLAVE_TXNACK:
     {
@@ -424,6 +425,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
 
   case I2C_EV5_MASTER_MODE_SELECT:
     dp->DR = i2cp->addr;
+    i2cp->mode = i2cIsMaster;
     break;
   case I2C_EV6_MASTER_REC_MODE_SELECTED:
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
@@ -456,7 +458,8 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     }
     dp->CR2 |= I2C_CR2_ITEVTEN;
     dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
-    wakeup_isr(i2cp, RDY_OK);
+    i2cp->mode = i2cIsSlave;
+    wakeup_isr(&i2cp->thread, RDY_OK);
     break;
   }
 }
@@ -504,7 +507,8 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
 
   dp->CR2 &= ~I2C_CR2_LAST;
   dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
-  wakeup_isr(i2cp, RDY_OK);
+  i2cp->mode = i2cIsSlave;
+  wakeup_isr(&i2cp->thread, RDY_OK);
 }
 
 /**
@@ -560,40 +564,45 @@ static void i2c_lld_serve_tx_end_irq(I2CDriver *i2cp, uint32_t flags) {
  * @notapi
  */
 static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
+  i2cflags_t errs = 0;
+  I2C_TypeDef *dp = i2cp->i2c;
+
+  if (sr & I2C_SR1_ARLO)                            /* Arbitration lost.    */
+    errs |= I2CD_ARBITRATION_LOST;
+  else
+    dp->CR1 |= I2C_CR1_STOP;                        /* Give up the bus      */
 
   /* Clears interrupt flags just to be safe.*/
   dmaStreamDisable(i2cp->dmatx);
   dmaStreamDisable(i2cp->dmarx);
 
-  i2cp->errors = I2CD_NO_ERROR;
-
   if (sr & I2C_SR1_BERR)                            /* Bus error.           */
-    i2cp->errors |= I2CD_BUS_ERROR;
+    errs |= I2CD_BUS_ERROR;
 
-  if (sr & I2C_SR1_ARLO)                            /* Arbitration lost.    */
-    i2cp->errors |= I2CD_ARBITRATION_LOST;
-
-  if (sr & I2C_SR1_AF) {                            /* Acknowledge fail.    */
-    i2cp->i2c->CR2 &= ~I2C_CR2_ITEVTEN;
-    i2cp->i2c->CR1 |= I2C_CR1_STOP;                 /* Setting stop bit.    */
-    i2cp->errors |= I2CD_ACK_FAILURE;
-  }
+  if (sr & I2C_SR1_AF)                              /* Acknowledge fail.    */
+    errs |= I2CD_ACK_FAILURE;
 
   if (sr & I2C_SR1_OVR)                             /* Overrun.             */
-    i2cp->errors |= I2CD_OVERRUN;
+    errs |= I2CD_OVERRUN;
 
   if (sr & I2C_SR1_TIMEOUT)                         /* SMBus Timeout.       */
-    i2cp->errors |= I2CD_TIMEOUT;
+    errs |= I2CD_TIMEOUT;
 
   if (sr & I2C_SR1_PECERR)                          /* PEC error.           */
-    i2cp->errors |= I2CD_PEC_ERROR;
+    errs |= I2CD_PEC_ERROR;
 
   if (sr & I2C_SR1_SMBALERT)                        /* SMBus alert.         */
-    i2cp->errors |= I2CD_SMB_ALERT;
+    errs |= I2CD_SMB_ALERT;
+    
+  if (!errs)
+    errs = I2CD_UNKNOWN_ERROR;
+  i2cp->errors = errs;
 
-  /* If some error has been identified in master mode, then wake the waiting thread.*/
-  if (i2cp->errors != I2CD_NO_ERROR)
-    wakeup_isr(i2cp, RDY_RESET);
+  /* wake appropriate waiting thread.*/
+  wakeup_isr(i2cp->mode >= i2cIsMaster ?
+             &i2cp->thread : &i2cp->slaveThread, RDY_RESET);
+  i2cp->mode = i2cIsSlave;
+  dp->CR2 |= I2C_CR2_ITEVTEN;
 }
 
 /*===========================================================================*/
@@ -847,7 +856,8 @@ void i2c_lld_start(I2CDriver *i2cp) {
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
     i2cp->slaveRx = i2cp->slaveNextRx =
     i2cp->slaveReply = i2cp->slaveNextReply = NULL;
-    i2cp->stuck = not;
+    i2cp->slaveThread = NULL;
+    i2cp->mode = i2cIsSlave;
     i2cp->targetAdr = 0;
 #endif
 
@@ -867,7 +877,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
  */
 void i2c_lld_stop(I2CDriver *i2cp) {
 
-  /* If not in stopped state then disables the I2C clock.*/
+  /* If not in stopped state, then disable the I2C clock.*/
   if (i2cp->state != I2C_STOP) {
 
     /* I2C disable.*/
@@ -1106,15 +1116,20 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 {
   chDbgCheck((rxMsg->size-1 < 0xffff), "i2c_lld_slaveReceive");
   i2cp->slaveNextRx = rxMsg;
-  if (rxMsg && i2cp->stuck == awaitingRx) {
-    i2cp->stuck = not;
-     /* slave RX DMA setup -- we can receive now! */
-    dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
-    dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
-    dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
-    dmaStreamEnable(i2cp->dmarx);
-    if (rxMsg->length)
-      *rxMsg->length = 0;
+  if (rxMsg && i2cp->mode == i2cIsAwaitingRx) {
+    /* slave RX DMA setup -- we can receive now! */
+    if (rxMsg->adrMatched)
+        rxMsg->adrMatched(i2cp);
+    rxMsg = i2cp->slaveRx = i2cp->slaveNextRx;
+    if (rxMsg) {
+      dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
+      dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
+      dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
+      dmaStreamEnable(i2cp->dmarx);
+      if (rxMsg->length)
+        *rxMsg->length = 0;
+      i2cp->mode = i2cIsSlave;
+    }
   }
 }
 
@@ -1129,15 +1144,20 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 {
   chDbgCheck((replyMsg->size-1 < 0xffff), "i2c_lld_slaveReply");
   i2cp->slaveNextReply = replyMsg;
-  if (replyMsg && i2cp->stuck == awaitingReply) {
-    i2cp->stuck = not;
+  if (replyMsg && i2cp->mode == i2cIsAwaitingReply) {
     /* slave TX DMA setup -- we can reply now! */
-    dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
-    dmaStreamSetMemory0(i2cp->dmatx, replyMsg->body);
-    dmaStreamSetTransactionSize(i2cp->dmatx, replyMsg->size);
-    dmaStreamEnable(i2cp->dmatx);
-    if (replyMsg->length)
-      *replyMsg->length = 0;
+    if (replyMsg->adrMatched)
+        replyMsg->adrMatched(i2cp);
+    replyMsg = i2cp->slaveReply = i2cp->slaveNextReply;
+    if (replyMsg) {
+      dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
+      dmaStreamSetMemory0(i2cp->dmatx, replyMsg->body);
+      dmaStreamSetTransactionSize(i2cp->dmatx, replyMsg->size);
+      dmaStreamEnable(i2cp->dmatx);
+      if (replyMsg->length)
+        *replyMsg->length = 0;
+      i2cp->mode = i2cIsSlave;
+    }
   }
 }
 

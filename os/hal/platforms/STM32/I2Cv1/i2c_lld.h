@@ -472,31 +472,35 @@ struct I2CDriver {
    
 #if HAL_USE_I2C_SLAVE
   /* additional fields to support I2C slave transactions */
-  const I2CSlaveMsg         *slaveRx;
   /**
-   * @brief     Pointer to slave message reception handler
-   */  
-  const I2CSlaveMsg         *slaveReply;
-  /**
-   * @brief     Pointer to slave message Reply handler
-   */  
-  const I2CSlaveMsg         *slaveNextRx;
-  /**
-   * @brief     Pointer to handler for next slave received message
-   */  
-  const I2CSlaveMsg         *slaveNextReply;
-  /**
-   * @brief     Pointer to handler for next slave reply message
+   * @brief     low level I2C interface state
    */
-  i2caddr_t                 targetAdr;
+  enum {i2cIsSlave, i2cIsAwaitingRx, i2cIsAwaitingReply, i2cIsMaster}  mode;
+  /**
+   * @brief   Thread waiting for Slave I/O completion.
+   */
+  Thread                    *slaveThread;
   /**
    * @brief     Most recently matched slave address
    */
-  enum  {not, awaitingRx, awaitingReply}  stuck;
+  i2caddr_t                 targetAdr;
   /**
-   * @brief     Most recent event interrupt serviced
+   * @brief     Pointer to slave message reception handler
+   */  
+  const I2CSlaveMsg         *slaveRx;
+  /**
+   * @brief     Pointer to slave message Reply handler
+   */  
+  const I2CSlaveMsg         *slaveReply;
+  /**
+   * @brief     Pointer to handler for next slave received message
+   */  
+  const I2CSlaveMsg         *slaveNextRx;
+  /**
+   * @brief     Pointer to handler for next slave reply message
    */
-  #endif
+  const I2CSlaveMsg         *slaveNextReply;
+#endif
 };
 
 /*===========================================================================*/
