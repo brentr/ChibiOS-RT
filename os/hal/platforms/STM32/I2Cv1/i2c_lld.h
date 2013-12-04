@@ -388,7 +388,6 @@ typedef void
 struct I2CSlaveMsg {
   size_t     size;     /* sizeof(body) */
   uint8_t   *body;     /* message contents */
-  size_t    *length;   /* ptr to number of bytes actually transferred or NULL */
   I2CSlaveMsgCB *processMsg;  /* invoked after message is transferred */
   I2CSlaveMsgCB *adrMatched;  /* invoked earlier, when slave address matches */
 };
@@ -469,7 +468,7 @@ struct I2CDriver {
    * @brief     Pointer to the I2Cx registers block.
    */
   I2C_TypeDef               *i2c;
-   
+
 #if HAL_USE_I2C_SLAVE
   /* additional fields to support I2C slave transactions */
   /**
@@ -477,24 +476,28 @@ struct I2CDriver {
    */
   enum {i2cIsSlave, i2cIsAwaitingRx, i2cIsAwaitingReply, i2cIsMaster}  mode;
   /**
-   * @brief   Thread waiting for Slave I/O completion.
-   */
-  Thread                    *slaveThread;
-  /**
    * @brief     Most recently matched slave address
    */
   i2caddr_t                 targetAdr;
   /**
+   * @brief   Thread waiting for Slave I/O completion.
+   */
+  Thread                    *slaveThread;
+  /**
+   * @brief     Length of most recently transferred slave message
+   */
+  uint32_t                  slaveBytes;
+  /**
    * @brief     Pointer to slave message reception handler
-   */  
+   */
   const I2CSlaveMsg         *slaveRx;
   /**
    * @brief     Pointer to slave message Reply handler
-   */  
+   */
   const I2CSlaveMsg         *slaveReply;
   /**
    * @brief     Pointer to handler for next slave received message
-   */  
+   */
   const I2CSlaveMsg         *slaveNextRx;
   /**
    * @brief     Pointer to handler for next slave reply message

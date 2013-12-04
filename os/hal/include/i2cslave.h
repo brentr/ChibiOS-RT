@@ -129,12 +129,20 @@ void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
       Does not affect the processing of any message reply being sent
 */
 
+/*
+  processing descriptor for the next reply message
+*/
 #define i2cSlaveReplyMsg(i2cp)  ((i2cp)->slaveNextReply)
 
 /*
-  most recently matched target i2c address
+  target address of most recently received slave message
 */
-#define i2cTargetAdr(i2cp) ((i2cp)->targetAdr)
+#define i2cSlaveTargetAdr(i2cp) ((i2cp)->targetAdr)
+
+/*
+  length of most recently received slave message
+*/
+#define i2cSlaveBytes(i2cp) ((i2cp)->slaveBytes)
 
 
 static INLINE void

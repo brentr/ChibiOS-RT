@@ -127,7 +127,7 @@ I2CDriver I2CD3;
 /*===========================================================================*/
 
 /**
- * @brief   Wakes up the waiting thread.
+ * @brief   Wakes up a waiting thread.
  *
  * @param[in] tpp       pointer to thread pointer
  * @param[in] msg       wakeup message
@@ -348,6 +348,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   case I2C_EV1_SLAVE_RXADRMATCH:
     {
       i2cp->targetAdr = matchedAdr(dp, regSR2);
+      i2cp->slaveBytes = 0;
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       const I2CSlaveMsg *rx = i2cp->slaveRx;
       if (rx) {
@@ -360,8 +361,6 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
           dmaStreamSetMemory0(i2cp->dmarx, rx->body);
           dmaStreamSetTransactionSize(i2cp->dmarx, rx->size);
           dmaStreamEnable(i2cp->dmarx);
-          if (rx->length)
-            *rx->length = 0;
           break;
         }
       }
@@ -371,13 +370,11 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   case I2C_EV2_SLAVE_RXSTOP:
     {
       const I2CSlaveMsg *rx = i2cp->slaveRx;
-      if (rx->length) {
-        size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
-        if (*rx->length)
-          *rx->length += 0xffff - bytesRemaining;
-        else
-          *rx->length = rx->size - bytesRemaining;
-      }
+      size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
+      if (i2cp->slaveBytes)
+        i2cp->slaveBytes += 0xffff - bytesRemaining;
+      else
+        i2cp->slaveBytes = rx->size - bytesRemaining;
       if (rx->processMsg)
         rx->processMsg(i2cp);
       i2cp->slaveRx = i2cp->slaveNextRx;
@@ -386,6 +383,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   case I2C_EV1_SLAVE_TXADRMATCH:
     {
       i2cp->targetAdr = matchedAdr(dp, regSR2);
+      i2cp->slaveBytes = 0;
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       const I2CSlaveMsg *reply = i2cp->slaveReply;
       if (reply) {
@@ -398,8 +396,6 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
           dmaStreamSetMemory0(i2cp->dmatx, reply->body);
           dmaStreamSetTransactionSize(i2cp->dmatx, reply->size);
           dmaStreamEnable(i2cp->dmatx);
-          if (reply->length)
-            *reply->length = 0;
           break;
         }
       }
@@ -409,13 +405,11 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   case I2C_EV3_2_SLAVE_TXNACK:
     {
       const I2CSlaveMsg *reply = i2cp->slaveReply;
-      if (reply->length) {
-        size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx);
-        if (*reply->length)
-          *reply->length += 0xffff - bytesRemaining;
-        else
-          *reply->length = reply->size - bytesRemaining;
-      }
+      size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx);
+      if (i2cp->slaveBytes)
+        i2cp->slaveBytes += 0xffff - bytesRemaining;
+      else
+        i2cp->slaveBytes = reply->size - bytesRemaining;
       if (reply->processMsg)
         reply->processMsg(i2cp);
       i2cp->slaveReply = i2cp->slaveNextReply;
@@ -461,6 +455,9 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     i2cp->mode = i2cIsSlave;
     wakeup_isr(&i2cp->thread, RDY_OK);
     break;
+  default:
+    chDbgAssert(TRUE,
+                "i2c_lld_serve_event_interrupt()", "unhandled event");
   }
 }
 
@@ -487,15 +484,13 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
   dmaStreamDisable(i2cp->dmarx);
 
 #if HAL_USE_I2C_SLAVE
-  if (!(dp->SR2 & I2C_SR2_MSL)) {
+  if (i2cp->mode < i2cIsMaster) {
     static uint8_t bitbucket;
     const I2CSlaveMsg *rx = i2cp->slaveRx;
-    if (rx->length) {
-      if (*rx->length)
-        *rx->length += 0xffff;
-      else
-        *rx->length = rx->size;
-    }
+    if (i2cp->slaveBytes)
+      i2cp->slaveBytes += 0xffff;
+    else
+      i2cp->slaveBytes = rx->size;
     /* discard data overrunning available rx buffer, but record total length */
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode & ~STM32_DMA_CR_MINC);
     dmaStreamSetMemory0(i2cp->dmarx, &bitbucket);
@@ -508,6 +503,7 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
   dp->CR2 &= ~I2C_CR2_LAST;
   dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
   i2cp->mode = i2cIsSlave;
+  dp->CR2 |= I2C_CR2_ITEVTEN;
   wakeup_isr(&i2cp->thread, RDY_OK);
 }
 
@@ -532,14 +528,12 @@ static void i2c_lld_serve_tx_end_irq(I2CDriver *i2cp, uint32_t flags) {
   dmaStreamDisable(i2cp->dmatx);
 
 #if HAL_USE_I2C_SLAVE
-  if (!(dp->SR2 & I2C_SR2_MSL)) {
+  if (i2cp->mode < i2cIsMaster) {
     const I2CSlaveMsg *reply = i2cp->slaveReply;
-    if (reply->length) {
-      if (*reply->length)
-        *reply->length += 0xffff;
-      else
-        *reply->length = reply->size;
-    }
+    if (i2cp->slaveBytes)
+      i2cp->slaveBytes += 0xffff;
+    else
+      i2cp->slaveBytes = reply->size;
     /* repeat the last byte in the reply */
     dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode & ~STM32_DMA_CR_MINC);
     dmaStreamSetMemory0(i2cp->dmatx, reply->body+reply->size-1);
@@ -593,7 +587,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 
   if (sr & I2C_SR1_SMBALERT)                        /* SMBus alert.         */
     errs |= I2CD_SMB_ALERT;
-    
+
   if (!errs)
     errs = I2CD_UNKNOWN_ERROR;
   i2cp->errors = errs;
@@ -1126,8 +1120,6 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
       dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
       dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
       dmaStreamEnable(i2cp->dmarx);
-      if (rxMsg->length)
-        *rxMsg->length = 0;
       i2cp->mode = i2cIsSlave;
     }
   }
@@ -1154,8 +1146,6 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
       dmaStreamSetMemory0(i2cp->dmatx, replyMsg->body);
       dmaStreamSetTransactionSize(i2cp->dmatx, replyMsg->size);
       dmaStreamEnable(i2cp->dmatx);
-      if (replyMsg->length)
-        *replyMsg->length = 0;
       i2cp->mode = i2cIsSlave;
     }
   }
