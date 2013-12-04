@@ -59,6 +59,7 @@
                                                 reception.                  */
 #define I2CD_TIMEOUT                0x20   /**< @brief Hardware timeout.    */
 #define I2CD_SMB_ALERT              0x40   /**< @brief SMBus Alert.         */
+#define I2CD_UNKNOWN_ERROR          0x80   /**< @brief spurious hardware err*/
 /** @} */
 
 /*===========================================================================*/
