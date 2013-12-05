@@ -229,7 +229,7 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
 
     chDbgAssert(clock_div >= 0x04,
                 "i2c_lld_set_clock(), #3",
-                "Clock divider less then 0x04 not allowed");
+                "Clock divider < 4 not allowed");
     regCCR |= (clock_div & I2C_CCR_CCR);
 
     /* Sets the Maximum Rise Time for standard mode.*/
@@ -349,7 +349,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     {
       i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
-      const I2CSlaveMsg *rx = i2cp->slaveRx;
+      const I2CSlaveMsg *rx = i2cp->slaveNextRx;
       if (rx) {
         if (rx->adrMatched)
           rx->adrMatched(i2cp);
@@ -362,6 +362,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
           dmaStreamEnable(i2cp->dmarx);
           i2cp->targetAdr = i2cp->nextTargetAdr;
           i2cp->slaveBytes = 0;
+          i2cp->slaveErrors = 0;
           break;
         }
       }
@@ -378,18 +379,17 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
         i2cp->slaveBytes = rx->size - bytesRemaining;
       if (rx->processMsg)
         rx->processMsg(i2cp);
-      i2cp->slaveRx = i2cp->slaveNextRx;
     }
     break;
   case I2C_EV1_SLAVE_TXADRMATCH:
     {
       i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
-      const I2CSlaveMsg *reply = i2cp->slaveReply;
+      const I2CSlaveMsg *reply = i2cp->slaveNextReply;
       if (reply) {
         if (reply->adrMatched)
           reply->adrMatched(i2cp);
-        reply = i2cp->slaveRx = i2cp->slaveNextRx;
+        reply = i2cp->slaveReply = i2cp->slaveNextReply;
         if (reply) {
           /* slave TX DMA setup.*/
           dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
@@ -398,6 +398,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
           dmaStreamEnable(i2cp->dmatx);
           i2cp->targetAdr = i2cp->nextTargetAdr;
           i2cp->slaveBytes = 0;
+          i2cp->slaveErrors = 0;
           break;
         }
       }
@@ -414,7 +415,6 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
         i2cp->slaveBytes = reply->size - bytesRemaining;
       if (reply->processMsg)
         reply->processMsg(i2cp);
-      i2cp->slaveReply = i2cp->slaveNextReply;
     }
     break;
 #endif  /* HAL_USE_I2C_SLAVE */
@@ -488,11 +488,10 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
 #if HAL_USE_I2C_SLAVE
   if (i2cp->mode < i2cIsMaster) {
     static uint8_t bitbucket;
-    const I2CSlaveMsg *rx = i2cp->slaveRx;
     if (i2cp->slaveBytes)
       i2cp->slaveBytes += 0xffff;
     else
-      i2cp->slaveBytes = rx->size;
+      i2cp->slaveBytes = i2cp->slaveRx->size;
     /* discard data overrunning available rx buffer, but record total length */
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode & ~STM32_DMA_CR_MINC);
     dmaStreamSetMemory0(i2cp->dmarx, &bitbucket);
@@ -592,14 +591,26 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 
   if (!errs)
     errs = I2CD_UNKNOWN_ERROR;
-  i2cp->errors = errs;
 
+#if HAL_USE_I2C_SLAVE
+  Thread **errThread;
+  if (i2cp->mode >= i2cIsMaster) {
+    i2cp->errors = errs;
+    errThread = &i2cp->thread;
+  }else{
+    i2cp->slaveErrors = errs;
+    errThread = &i2cp->slaveThread;
+  }
+#else
+  i2cp->errors = errs;
+#define errThread  &i2cp->thread
+#endif
   /* wake appropriate waiting thread.*/
-  wakeup_isr(i2cp->mode >= i2cIsMaster ?
-             &i2cp->thread : &i2cp->slaveThread, RDY_RESET);
+  wakeup_isr(errThread, RDY_RESET);
   i2cp->mode = i2cIsSlave;
   dp->CR2 |= I2C_CR2_ITEVTEN;
 }
+#undef errThread
 
 /*===========================================================================*/
 /* Driver interrupt handlers.                                                */
@@ -1124,6 +1135,7 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
       dmaStreamEnable(i2cp->dmarx);
       i2cp->targetAdr = i2cp->nextTargetAdr;
       i2cp->slaveBytes = 0;
+      i2cp->slaveErrors = 0;
       i2cp->mode = i2cIsSlave;
     }
   }
@@ -1152,6 +1164,7 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
       dmaStreamEnable(i2cp->dmatx);
       i2cp->targetAdr = i2cp->nextTargetAdr;
       i2cp->slaveBytes = 0;
+      i2cp->slaveErrors = 0;
       i2cp->mode = i2cIsSlave;
     }
   }

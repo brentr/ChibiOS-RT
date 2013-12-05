@@ -149,6 +149,11 @@ void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
 */
 #define i2cSlaveBytes(i2cp) ((i2cp)->slaveBytes)
 
+/*
+  mask of errors for last slave message (partially) received
+*/
+#define i2cSlaveErrors(i2cp) ((i2cp)->slaveErrors)
+
 
 static INLINE void
   i2cSlaveReceiveI(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)

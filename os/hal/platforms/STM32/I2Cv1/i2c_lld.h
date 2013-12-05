@@ -488,6 +488,10 @@ struct I2CDriver {
    */
   Thread                    *slaveThread;
   /**
+   * @brief     Error Mask for last slave message
+   */
+  i2cflags_t                slaveErrors;
+  /**
    * @brief     Length of most recently transferred slave message
    */
   uint32_t                  slaveBytes;
