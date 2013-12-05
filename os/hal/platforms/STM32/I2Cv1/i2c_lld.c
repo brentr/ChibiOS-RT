@@ -347,8 +347,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
 #if HAL_USE_I2C_SLAVE
   case I2C_EV1_SLAVE_RXADRMATCH:
     {
-      i2cp->targetAdr = matchedAdr(dp, regSR2);
-      i2cp->slaveBytes = 0;
+      i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       const I2CSlaveMsg *rx = i2cp->slaveRx;
       if (rx) {
@@ -361,6 +360,8 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
           dmaStreamSetMemory0(i2cp->dmarx, rx->body);
           dmaStreamSetTransactionSize(i2cp->dmarx, rx->size);
           dmaStreamEnable(i2cp->dmarx);
+          i2cp->targetAdr = i2cp->nextTargetAdr;
+          i2cp->slaveBytes = 0;
           break;
         }
       }
@@ -382,8 +383,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     break;
   case I2C_EV1_SLAVE_TXADRMATCH:
     {
-      i2cp->targetAdr = matchedAdr(dp, regSR2);
-      i2cp->slaveBytes = 0;
+      i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       const I2CSlaveMsg *reply = i2cp->slaveReply;
       if (reply) {
@@ -396,6 +396,8 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
           dmaStreamSetMemory0(i2cp->dmatx, reply->body);
           dmaStreamSetTransactionSize(i2cp->dmatx, reply->size);
           dmaStreamEnable(i2cp->dmatx);
+          i2cp->targetAdr = i2cp->nextTargetAdr;
+          i2cp->slaveBytes = 0;
           break;
         }
       }
@@ -852,7 +854,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
     i2cp->slaveReply = i2cp->slaveNextReply = NULL;
     i2cp->slaveThread = NULL;
     i2cp->mode = i2cIsSlave;
-    i2cp->targetAdr = 0;
+    i2cp->targetAdr = i2cp->nextTargetAdr = 0;
 #endif
 
     /* Enable interrrupts */
@@ -1120,6 +1122,8 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
       dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
       dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
       dmaStreamEnable(i2cp->dmarx);
+      i2cp->targetAdr = i2cp->nextTargetAdr;
+      i2cp->slaveBytes = 0;
       i2cp->mode = i2cIsSlave;
     }
   }
@@ -1146,6 +1150,8 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
       dmaStreamSetMemory0(i2cp->dmatx, replyMsg->body);
       dmaStreamSetTransactionSize(i2cp->dmatx, replyMsg->size);
       dmaStreamEnable(i2cp->dmatx);
+      i2cp->targetAdr = i2cp->nextTargetAdr;
+      i2cp->slaveBytes = 0;
       i2cp->mode = i2cIsSlave;
     }
   }

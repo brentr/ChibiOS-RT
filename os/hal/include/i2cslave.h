@@ -53,7 +53,7 @@ msg_t  i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
     addition to those already being matched.
     Note that most drivers will only support matching a single nonzero address.
 */
-    
+
 void  i2cUnmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
 /*
     Do not match specified i2cadr.
@@ -135,9 +135,14 @@ void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
 #define i2cSlaveReplyMsg(i2cp)  ((i2cp)->slaveNextReply)
 
 /*
-  target address of most recently received slave message
+  target address of slave message being processed
 */
 #define i2cSlaveTargetAdr(i2cp) ((i2cp)->targetAdr)
+
+/*
+  target address of slave message just matched
+*/
+#define i2cSlaveMatchedAdr(i2cp) ((i2cp)->nextTargetAdr)
 
 /*
   length of most recently received slave message
@@ -171,7 +176,7 @@ static INLINE void
 */
 {
    i2c_lld_slaveReply(i2cp, replyMsg);
-} 
+}
 
 
 static INLINE msg_t

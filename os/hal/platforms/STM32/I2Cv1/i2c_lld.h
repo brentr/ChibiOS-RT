@@ -476,9 +476,13 @@ struct I2CDriver {
    */
   enum {i2cIsSlave, i2cIsAwaitingRx, i2cIsAwaitingReply, i2cIsMaster}  mode;
   /**
-   * @brief     Most recently matched slave address
+   * @brief     slave address of message being processed
    */
   i2caddr_t                 targetAdr;
+  /**
+   * @brief     Most recently matched slave address
+   */
+  i2caddr_t                 nextTargetAdr;
   /**
    * @brief   Thread waiting for Slave I/O completion.
    */
