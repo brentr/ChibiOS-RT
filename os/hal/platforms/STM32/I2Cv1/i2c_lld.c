@@ -64,31 +64,28 @@
 /*===========================================================================*/
 
 #define I2C_EV5_MASTER_MODE_SELECT                                          \
-  ((uint32_t)(((I2C_SR2_MSL | I2C_SR2_BUSY) << 16) | I2C_SR1_SB))
+  (((I2C_SR2_MSL | I2C_SR2_BUSY) << 16) | I2C_SR1_SB)
 
 #define I2C_EV6_MASTER_TRA_MODE_SELECTED                                    \
-  ((uint32_t)(((I2C_SR2_MSL | I2C_SR2_BUSY | I2C_SR2_TRA) << 16) |          \
-              I2C_SR1_ADDR | I2C_SR1_TXE))
+  (((I2C_SR2_MSL | I2C_SR2_BUSY | I2C_SR2_TRA) << 16) |                     \
+              I2C_SR1_ADDR | I2C_SR1_TXE)
 
 #define I2C_EV6_MASTER_REC_MODE_SELECTED                                    \
-  ((uint32_t)(((I2C_SR2_MSL | I2C_SR2_BUSY)<< 16) | I2C_SR1_ADDR))
+  (((I2C_SR2_MSL | I2C_SR2_BUSY)<< 16) | I2C_SR1_ADDR)
 
 #define I2C_EV8_2_MASTER_BYTE_TRANSMITTED                                   \
-  ((uint32_t)(((I2C_SR2_MSL | I2C_SR2_BUSY | I2C_SR2_TRA) << 16) |          \
-              I2C_SR1_BTF | I2C_SR1_TXE))
+  (((I2C_SR2_MSL | I2C_SR2_BUSY | I2C_SR2_TRA) << 16) |                     \
+              I2C_SR1_BTF | I2C_SR1_TXE)
 
 #if HAL_USE_I2C_SLAVE
 #define I2C_EV1_SLAVE_RXADRMATCH  \
-  ((uint32_t)((I2C_SR2_BUSY << 16)  | I2C_SR1_ADDR))
+  ((I2C_SR2_BUSY << 16)  | I2C_SR1_ADDR)
 
 #define I2C_EV1_SLAVE_TXADRMATCH  \
-  ((uint32_t)(((I2C_SR2_BUSY|I2C_SR2_TRA) << 16)  | I2C_SR1_ADDR))
+  (((I2C_SR2_BUSY|I2C_SR2_TRA) << 16)  | I2C_SR1_ADDR)
 
 #define I2C_EV2_SLAVE_RXSTOP \
-  ((uint32_t)(((I2C_SR2_GENCALL|I2C_SR2_BUSY) << 16)  | I2C_SR1_STOPF))
-
-#define I2C_EV3_2_SLAVE_TXNACK \
-  ((uint32_t)(((I2C_SR2_GENCALL|I2C_SR2_BUSY) << 16)  | I2C_SR1_AF))
+  (I2C_SR1_STOPF)
 #endif
 
 #define I2C_EV_MASK (  \
@@ -96,8 +93,8 @@
   (I2C_SR1_SB|I2C_SR1_ADDR|I2C_SR1_STOPF|I2C_SR1_AF))
 
 #define I2C_ERROR_MASK                                                      \
-  ((uint16_t)(I2C_SR1_BERR | I2C_SR1_ARLO | I2C_SR1_AF | I2C_SR1_OVR |      \
-              I2C_SR1_PECERR | I2C_SR1_TIMEOUT | I2C_SR1_SMBALERT))
+  (I2C_SR1_BERR | I2C_SR1_ARLO | I2C_SR1_AF | I2C_SR1_OVR |                 \
+              I2C_SR1_PECERR | I2C_SR1_TIMEOUT | I2C_SR1_SMBALERT)
 
 /*===========================================================================*/
 /* Driver exported variables.                                                */
@@ -328,6 +325,84 @@ static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
 
 
 /**
+ * @brief   I2C error handler.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in]  sr       content of the SR1 register to be decoded
+ *
+ * @notapi
+ */
+static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
+#if HAL_USE_I2C_SLAVE
+/* NACK of last byte transmitted in slave response is NORMAL -- not an error! */
+  if (i2cp->mode == i2cIsSlave && (sr & I2C_SR1_AF)) {
+    const I2CSlaveMsg *reply = i2cp->slaveReply;
+    size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx);
+    dmaStreamDisable(i2cp->dmatx);
+    if (i2cp->slaveBytes)
+      i2cp->slaveBytes += 0xffff - bytesRemaining;
+    else
+      i2cp->slaveBytes = reply->size - bytesRemaining;
+    if (reply->processMsg)
+      reply->processMsg(i2cp);
+    return;
+  }
+#endif
+  i2cflags_t errs = 0;
+  I2C_TypeDef *dp = i2cp->i2c;
+
+  if (sr & I2C_SR1_ARLO)                            /* Arbitration lost.    */
+    errs |= I2CD_ARBITRATION_LOST;
+  else
+    dp->CR1 |= I2C_CR1_STOP;                        /* Give up the bus      */
+
+  /* Clears interrupt flags just to be safe.*/
+  dmaStreamDisable(i2cp->dmatx);
+  dmaStreamDisable(i2cp->dmarx);
+
+  if (sr & I2C_SR1_BERR)                            /* Bus error.           */
+    errs |= I2CD_BUS_ERROR;
+
+  if (sr & I2C_SR1_AF)                              /* Acknowledge fail.    */
+    errs |= I2CD_ACK_FAILURE;
+
+  if (sr & I2C_SR1_OVR)                             /* Overrun.             */
+    errs |= I2CD_OVERRUN;
+
+  if (sr & I2C_SR1_TIMEOUT)                         /* SMBus Timeout.       */
+    errs |= I2CD_TIMEOUT;
+
+  if (sr & I2C_SR1_PECERR)                          /* PEC error.           */
+    errs |= I2CD_PEC_ERROR;
+
+  if (sr & I2C_SR1_SMBALERT)                        /* SMBus alert.         */
+    errs |= I2CD_SMB_ALERT;
+
+  if (!errs)
+    errs = I2CD_UNKNOWN_ERROR;
+
+#if HAL_USE_I2C_SLAVE
+  Thread **errThread;
+  if (i2cp->mode >= i2cIsMaster) {
+    i2cp->errors = errs;
+    errThread = &i2cp->thread;
+  }else{
+    i2cp->slaveErrors = errs;
+    errThread = &i2cp->slaveThread;
+  }
+#else
+  i2cp->errors = errs;
+#define errThread  &i2cp->thread
+#endif
+  /* wake appropriate waiting thread.*/
+  wakeup_isr(errThread, RDY_RESET);
+  i2cp->mode = i2cIsSlave;
+  dp->CR2 |= I2C_CR2_ITEVTEN;
+}
+#undef errThread
+
+
+/**
  * @brief   I2C shared ISR code.
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
@@ -371,6 +446,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     break;
   case I2C_EV2_SLAVE_RXSTOP:
     {
+      dp->CR1 |= 0;  /* dummy write just to clear I2C_SR1_STOPF */
       const I2CSlaveMsg *rx = i2cp->slaveRx;
       size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
       if (i2cp->slaveBytes)
@@ -403,18 +479,6 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
         }
       }
       i2cp->mode = i2cIsAwaitingReply;
-    }
-    break;
-  case I2C_EV3_2_SLAVE_TXNACK:
-    {
-      const I2CSlaveMsg *reply = i2cp->slaveReply;
-      size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx);
-      if (i2cp->slaveBytes)
-        i2cp->slaveBytes += 0xffff - bytesRemaining;
-      else
-        i2cp->slaveBytes = reply->size - bytesRemaining;
-      if (reply->processMsg)
-        reply->processMsg(i2cp);
     }
     break;
 #endif  /* HAL_USE_I2C_SLAVE */
@@ -457,9 +521,10 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     i2cp->mode = i2cIsSlave;
     wakeup_isr(&i2cp->thread, RDY_OK);
     break;
-  default:
-    chDbgAssert(TRUE,
-                "i2c_lld_serve_event_interrupt()", "unhandled event");
+  default:  /* unhandled event -- abort transaction, flag unknown err */
+    (void)dp->SR2;  /* clears possible I2C_SR1_ADDR */
+    dp->CR1 |= 0;   /* clears possible I2C_SR1_STOPF */
+    i2c_lld_serve_error_interrupt(i2cp, event);
   }
 }
 
@@ -549,68 +614,6 @@ static void i2c_lld_serve_tx_end_irq(I2CDriver *i2cp, uint32_t flags) {
      of R/W transaction itself.*/
   dp->CR2 |= I2C_CR2_ITEVTEN;
 }
-
-/**
- * @brief   I2C error handler.
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- * @param[in]  sr       content of the SR1 register to be decoded
- *
- * @notapi
- */
-static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
-  i2cflags_t errs = 0;
-  I2C_TypeDef *dp = i2cp->i2c;
-
-  if (sr & I2C_SR1_ARLO)                            /* Arbitration lost.    */
-    errs |= I2CD_ARBITRATION_LOST;
-  else
-    dp->CR1 |= I2C_CR1_STOP;                        /* Give up the bus      */
-
-  /* Clears interrupt flags just to be safe.*/
-  dmaStreamDisable(i2cp->dmatx);
-  dmaStreamDisable(i2cp->dmarx);
-
-  if (sr & I2C_SR1_BERR)                            /* Bus error.           */
-    errs |= I2CD_BUS_ERROR;
-
-  if (sr & I2C_SR1_AF)                              /* Acknowledge fail.    */
-    errs |= I2CD_ACK_FAILURE;
-
-  if (sr & I2C_SR1_OVR)                             /* Overrun.             */
-    errs |= I2CD_OVERRUN;
-
-  if (sr & I2C_SR1_TIMEOUT)                         /* SMBus Timeout.       */
-    errs |= I2CD_TIMEOUT;
-
-  if (sr & I2C_SR1_PECERR)                          /* PEC error.           */
-    errs |= I2CD_PEC_ERROR;
-
-  if (sr & I2C_SR1_SMBALERT)                        /* SMBus alert.         */
-    errs |= I2CD_SMB_ALERT;
-
-  if (!errs)
-    errs = I2CD_UNKNOWN_ERROR;
-
-#if HAL_USE_I2C_SLAVE
-  Thread **errThread;
-  if (i2cp->mode >= i2cIsMaster) {
-    i2cp->errors = errs;
-    errThread = &i2cp->thread;
-  }else{
-    i2cp->slaveErrors = errs;
-    errThread = &i2cp->slaveThread;
-  }
-#else
-  i2cp->errors = errs;
-#define errThread  &i2cp->thread
-#endif
-  /* wake appropriate waiting thread.*/
-  wakeup_isr(errThread, RDY_RESET);
-  i2cp->mode = i2cIsSlave;
-  dp->CR2 |= I2C_CR2_ITEVTEN;
-}
-#undef errThread
 
 /*===========================================================================*/
 /* Driver interrupt handlers.                                                */
