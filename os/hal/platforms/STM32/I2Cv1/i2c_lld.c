@@ -395,7 +395,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 #define errThread  &i2cp->thread
 #endif
   /* wake appropriate waiting thread.*/
-  wakeup_isr(errThread, RDY_RESET);
+  wakeup_isr(errThread, I2C_ERROR);
   i2cp->mode = i2cIsSlave;
   dp->CR2 |= I2C_CR2_ITEVTEN;
 }
@@ -869,6 +869,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
     i2cp->slaveThread = NULL;
     i2cp->mode = i2cIsSlave;
     i2cp->targetAdr = i2cp->nextTargetAdr = 0;
+    i2cp->slaveTimeout = TIME_INFINITE;
 #endif
 
     /* Enable interrrupts */
@@ -935,10 +936,10 @@ void i2c_lld_stop(I2CDriver *i2cp) {
  *                      - @a TIME_INFINITE no timeout.
  *                      .
  * @return              The operation status.
- * @retval RDY_OK       if the function succeeded.
- * @retval RDY_RESET    if one or more I2C errors occurred, the errors can
+ * @retval I2C_OK       if the function succeeded.
+ * @retval I2C_ERROR    if one or more I2C errors occurred, the errors can
  *                      be retrieved using @p i2cGetErrors().
- * @retval RDY_TIMEOUT  if a timeout occurred before operation end. <b>After a
+ * @retval I2C_TIMEOUT  if a timeout occurred before operation end. <b>After a
  *                      timeout the driver must be stopped and restarted
  *                      because the bus is in an uncertain state</b>.
  *
@@ -993,10 +994,10 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
  *                      - @a TIME_INFINITE no timeout.
  *                      .
  * @return              The operation status.
- * @retval RDY_OK       if the function succeeded.
- * @retval RDY_RESET    if one or more I2C errors occurred, the errors can
+ * @retval I2C_OK       if the function succeeded.
+ * @retval I2C_ERROR    if one or more I2C errors occurred, the errors can
  *                      be retrieved using @p i2cGetErrors().
- * @retval RDY_TIMEOUT  if a timeout occurred before operation end. <b>After a
+ * @retval I2C_TIMEOUT  if a timeout occurred before operation end. <b>After a
  *                      timeout the driver must be stopped and restarted
  *                      because the bus is in an uncertain state</b>.
  *
@@ -1047,7 +1048,7 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
 #define I2C_OAR1_Ack_7bit     (0x4000)  /*enable 7 bit address acknowledge*/
 #define I2C_OAR1_Ack_10bit    (0xC000)  /*enable 10bit address acknowledge*/
 
-msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
+int i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
 /*
     Respond to messages directed to the given i2cadr.
     MatchAddress calls are cumulative.
@@ -1070,7 +1071,7 @@ msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
     else if ((dp->OAR2 & (0x7f<<1)) != adr)
       return -1;    /* cannot add this address to set of those matched */
   }
-  return RDY_OK;
+  return 0;
 }
 
 
@@ -1115,7 +1116,7 @@ void i2c_lld_unmatchAll(I2CDriver *i2cp)
 }
 
 
-void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
+void i2c_lld_set_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 /*
   Prepare to receive and process I2C messages according to
   the rxMsg configuration.
@@ -1144,7 +1145,8 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
   }
 }
 
-void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
+
+void i2c_lld_set_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 /*
   Prepare to reply to subsequent I2C read requests from bus masters
   according to the replyMsg configuration.
@@ -1171,6 +1173,97 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
       i2cp->mode = i2cIsSlave;
     }
   }
+}
+
+
+static void
+  wakeForRx(I2CDriver *i2cp)
+{
+  i2cp->slaveNextReply = i2cp->slaveNextRx = NULL;
+  wakeup_isr(&i2cp->slaveThread, i2cp->slaveBytes);
+}
+
+static void
+  wakeForQuery(I2CDriver *i2cp)
+{
+  i2cp->slaveNextReply = i2cp->slaveNextRx = NULL;
+  wakeup_isr(&i2cp->slaveThread, I2C_QUERY);
+}
+
+
+msg_t  i2c_lld_slaveAwaitEvent(I2CDriver *i2cp,
+                               uint8_t *inputBuffer,
+                               size_t size,
+                               i2caddr_t *targetAdr)
+/*
+  If inputBuffer is non-NULL
+    Waits for a received message, query, error, or timeout.
+    Incoming messages are received into inputBuffer,
+  If inputBuffer is NULL,
+    Waits only for error or timeout.
+  If non-NULL, *targetAdr is assigned the target address.
+
+  If returned value is >=0, it is the number of bytes received
+  otherwise, the return value:
+    I2C_QUERY implies master is awaiting a response from this slave
+    One should call i2cSlaveReply() before calling i2cSlaveAwaitEvent() again
+
+    I2C_ERROR implies an error occured
+    details can be retrieved via i2cGetErrors()
+
+    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
+*/
+{
+  if (inputBuffer) {
+    const I2CSlaveMsg rx    = {size, inputBuffer, wakeForRx, NULL};
+    i2c_lld_set_slaveReceive(i2cp, &rx);
+    const I2CSlaveMsg reply = {0, NULL, NULL, wakeForQuery};
+    i2c_lld_set_slaveReply(i2cp, &reply);
+  }
+  systime_t timeout = i2cp->slaveTimeout;
+  i2cp->slaveThread = chThdSelf();
+  chSchGoSleepS(THD_STATE_SUSPENDED);
+  msg_t result = chThdSelf()->p_u.rdymsg;
+  if (result < 0 && result != I2C_QUERY)
+    i2cp->slaveNextReply = i2cp->slaveNextRx = NULL;
+  if (targetAdr)
+    *targetAdr = i2cp->targetAdr;
+  //deal with case of master and slave timers both active
+  return result;
+}
+
+
+static void
+  wakeWhenSent(I2CDriver *i2cp)
+{
+  i2cp->slaveNextReply = NULL;
+  wakeup_isr(&i2cp->slaveThread, i2cp->slaveBytes);
+}
+
+msg_t i2c_lld_slaveAnswer(I2CDriver *i2cp,
+                          const uint8_t *replyBuffer, size_t size)
+/*
+  Blocks until replyBuffer is sent back to the requesting master.
+  Invoke directly after i2cSlaveAwaitEvent() returns I2C_QUERY.
+
+  If returned value is >=0, it is the number of bytes transmitted
+  otherwise, the return value:
+    I2C_ERROR indicates that an error occured
+    details can be retrieved via i2cGetErrors()
+
+    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
+*/
+{
+  const I2CSlaveMsg answer = {size, (uint8_t *)replyBuffer, wakeWhenSent, NULL};
+  i2c_lld_set_slaveReply(i2cp, &answer);
+  systime_t timeout = i2cp->slaveTimeout;
+  i2cp->slaveThread = chThdSelf();
+  chSchGoSleepS(THD_STATE_SUSPENDED);
+  msg_t result = chThdSelf()->p_u.rdymsg;
+  if (result < 0)
+    i2cp->slaveNextReply = i2cp->slaveNextRx = NULL;
+  //deal with case of master and slave timers both active
+  return result;
 }
 
 #endif /* HAL_USE_I2C_SLAVE */

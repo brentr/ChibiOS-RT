@@ -258,25 +258,77 @@ msg_t i2cMasterReceiveTimeout(I2CDriver *i2cp,
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 
-void i2cSlaveStart(I2CDriver *i2cp,
+msg_t  i2cSlaveAwaitEvent(I2CDriver *i2cp,
+                          uint8_t *inputBuffer,
+                          size_t size,
+                          i2caddr_t *targetAdr)
+/*
+  Waits for a received message, query, error, or timeout.
+  Incoming messages are received into inputBuffer,
+  If non-NULL, *targetAdr is assigned the target address.
+
+  If returned value is >=0, it is the number of bytes received
+  otherwise, the return value:
+    I2C_QUERY implies master is awaiting a response from this slave
+    One should call i2cSlaveReply() before calling i2cSalveAwaitMessage() again
+
+    I2C_ERROR implies an error occured
+    details can be retrieved via i2cGetErrors()
+
+    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
+*/
+{
+  chDbgCheck((i2cp != NULL),
+             "i2cSlaveAwaitEvent");
+  chSysLock();
+  msg_t result = i2c_lld_slaveAwaitEvent(i2cp, inputBuffer, size, targetAdr);
+  chSysUnlock();
+  return result;
+}
+
+
+msg_t  i2cSlaveAnswer(I2CDriver *i2cp,
+                      const uint8_t *replyBuffer, size_t size)
+/*
+  Blocks until replyBuffer is sent back to the requesting master.
+  Invoke directly after i2cSlaveAwaitEvent() returns I2C_QUERY.
+
+  Returned value is one of:
+    I2C_OK indicates success
+
+    I2C_ERROR indicates that an error occured
+    details can be retrieved via i2cGetErrors()
+
+    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
+*/
+{
+  chDbgCheck((i2cp != NULL) && (replyBuffer != NULL) && (size > 0),
+             "i2cSlaveAnswer");
+  chSysLock();
+  msg_t result = i2c_lld_slaveAnswer(i2cp, replyBuffer, size);
+  chSysUnlock();
+  return result;
+}
+
+void i2cSlaveConfigure(I2CDriver *i2cp,
                    const I2CSlaveMsg *rxMsg, const I2CSlaveMsg *replyMsg)
 /*
-  Prepare to receive and process I2C messages and reply to read requests.
+  Configure to receive and process I2C messages and reply to read requests.
 
   Notes:
       Must be called from a thread
       One must subsequently call i2cMatchAddress() to enable slave processing
-      Enabling match addresses before calling i2cSlaveStart() will
+      Enabling match addresses before calling i2cSlaveConfigure() will
       result in locking the I2C bus when a master accesses those slave addresses
 */
 {
   chSysLock();
-  i2c_lld_slaveReceive(i2cp, rxMsg);
-  i2c_lld_slaveReply(i2cp, replyMsg);
+  i2c_lld_set_slaveReceive(i2cp, rxMsg);
+  i2c_lld_set_slaveReply(i2cp, replyMsg);
   chSysUnlock();
 }
 
-void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
+void i2cSlaveSetReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 /*
   Prepare to receive and process I2C messages according to
   the rxMsg configuration.
@@ -286,7 +338,7 @@ void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 */
 {
   chSysLock();
-  i2c_lld_slaveReceive(i2cp, rxMsg);
+  i2c_lld_set_slaveReceive(i2cp, rxMsg);
   chSysUnlock();
 }
 
@@ -300,7 +352,7 @@ void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 */
 {
   chSysLock();
-  i2c_lld_slaveReply(i2cp, replyMsg);
+  i2c_lld_set_slaveReply(i2cp, replyMsg);
   chSysUnlock();
 }
 

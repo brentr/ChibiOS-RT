@@ -43,14 +43,14 @@
 
 #include <i2c.h>
 
-msg_t  i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
+int  i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
 /*
     Respond to messages directed to the given i2cadr.
     MatchAddress calls are cumulative.
     Specify address zero to match I2C "all call"
 
-    Returns error if driver does not support matching the specified address in
-    addition to those already being matched.
+    Returns non-zero if driver does not support matching the
+    specified address in addition to those already being matched.
     Note that most drivers will only support matching a single nonzero address.
 */
 
@@ -70,23 +70,82 @@ void  i2cUnmatchAll(I2CDriver *i2cp);
     will continue being processed.
 */
 
-void i2cSlaveStart(I2CDriver *i2cp,
-                   const I2CSlaveMsg *rxMsg, const I2CSlaveMsg *replyMsg);
-/*
-  Prepare to receive and process I2C messages and reply to read requests.
 
-  Notes:
-      Must be called from a thread
-      One must subsequently call i2cMatchAddress() to enable slave processing
-      Enabling match addresses before calling i2cSlaveStart() will
-      result in locking the I2C bus when a master accesses those slave addresses
+msg_t  i2cSlaveAwaitEvent(I2CDriver *i2cp,
+           uint8_t *inputBuffer, size_t size, i2caddr_t *targetAdr);
+/*
+  Waits for a received message, query, error, or timeout.
+  Incoming messages are received into inputBuffer,
+  If non-NULL, *targetAdr is assigned the target address.
+
+  If returned value is >=0, it is the number of bytes received
+  otherwise, the return value:
+    I2C_QUERY indicates master is awaiting a response from this slave
+    One should call i2cSendReply() before calling i2cSlaveAwaitMessage() again
+
+    I2C_ERROR indicates an error occured
+    details can be retrieved via i2cGetErrors()
+
+    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
 */
 
 
+msg_t  i2cSlaveAnswer(I2CDriver *i2cp,
+                      const uint8_t *replyBuffer, size_t size);
 /*
-  Advanced Usage:
+  Blocks until replyBuffer is sent back to the requesting master.
+  Invoke directly after i2cSlaveAwaitEvent() returns I2C_QUERY.
 
-  Each I2CSlaveMsgCB function may alter the processing of subsequent I2C
+  If returned value is >=0, it is the number of bytes transmitted
+  otherwise, the return value:
+    I2C_ERROR indicates that an error occured
+    details can be retrieved via i2cGetErrors()
+
+    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
+*/
+
+
+static INLINE
+  i2cflags_t i2cSlaveErrors(I2CDriver *i2cp)
+/*
+  mask of errors for last slave message (partially) received
+*/
+{
+  return i2c_lld_get_slaveErrors(i2cp);
+}
+
+static INLINE
+  systime_t i2cSlaveTimeout(I2CDriver *i2cp)
+/*
+  get the number of ticks before the operation timeouts
+  initialized to TIME_INFINITE (slave operations do not timeout until changed)
+*/
+{
+  return i2c_lld_get_slaveTimeout(i2cp);
+}
+
+static INLINE
+  void i2cSlaveSetTimeout(I2CDriver *i2cp, systime_t ticks)
+/*
+  set the number of ticks before the operation timeouts
+*/
+{
+  i2c_lld_set_slaveTimeout(i2cp, ticks);
+}
+
+
+
+/*
+  Advanced Usage with Asynchronous Callback functions:
+
+  Asynchronous callback functions are used internally to implement
+  i2cSlaveAwaitMessage() described above.
+
+  i2cSlaveAwaitMessage() will conflict with the i2cSlaveReceive and
+  i2cSlaveReply functions defined below, except for the case of
+  calling i2cSlaveReply() to answer an I2C_QUERY.
+
+  Each callback function may alter the processing of subsequent I2C
   messages and read requests by calling i2cSlaveReceiveI() and
   i2cSlaveReplyI(), respectively.
 
@@ -103,60 +162,102 @@ void i2cSlaveStart(I2CDriver *i2cp,
   The I2C bus is unlocked only after a i2cSlaveReceive() or Reply() is
   called with a non-NULL I2CSlaveMsg pointer.
 
-  Note that I2CSlaveMsg pointers are NULL before i2cSlaveStart() is called.
+  All I2CSlaveMsg pointers are initially NULL
 */
 
-
-void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
+static INLINE
+  msg_t  i2cSlaveAwaitError(I2CDriver *i2cp, i2caddr_t *targetAdr)
 /*
-  Prepare to receive and process I2C messages according to
-  the rxMsg configuration.
-
-  Notes:
-    Called from thread context
-      Does not affect the processing of any message currently being received
+  Waits for I2C error or timeout
+  Received messages and queries are to be handled via callback functions
+  This is the recommended way to be notified of errors when using callbacks
 */
+{
+  return i2cSlaveAwaitEvent(i2cp, NULL, 0, targetAdr);
+}
 
-#define i2cSlaveReceiveMsg(i2cp)  ((i2cp)->slaveNextRx)
-
-void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
-/*
-  Prepare to reply to subsequent I2C read requests from bus masters
-  according to the replyMsg configuration.
-
-  Notes:
-    Called from thread context
-      Does not affect the processing of any message reply being sent
-*/
-
-/*
-  processing descriptor for the next reply message
-*/
-#define i2cSlaveReplyMsg(i2cp)  ((i2cp)->slaveNextReply)
-
-/*
-  target address of slave message being processed
-*/
-#define i2cSlaveTargetAdr(i2cp) ((i2cp)->targetAdr)
-
-/*
-  target address of slave message just matched
-*/
-#define i2cSlaveMatchedAdr(i2cp) ((i2cp)->nextTargetAdr)
-
+static INLINE
+  size_t i2cSlaveBytes(I2CDriver *i2cp)
 /*
   length of most recently received slave message
 */
-#define i2cSlaveBytes(i2cp) ((i2cp)->slaveBytes)
+{
+  return i2c_lld_get_slaveBytes(i2cp);
+}
 
+
+void i2cSlaveConfigure(I2CDriver *i2cp,
+                   const I2CSlaveMsg *rxMsg, const I2CSlaveMsg *replyMsg);
 /*
-  mask of errors for last slave message (partially) received
+  Configure to receive and process I2C messages and reply to read requests.
+
+  Notes:
+      Must be called from a thread
+      One must subsequently call i2cMatchAddress() to enable slave processing
+      Enabling match addresses before installing handler callbacks can
+      result in locking the I2C bus when a master accesses those slave addresses
 */
-#define i2cSlaveErrors(i2cp) ((i2cp)->slaveErrors)
+
+void i2cSlaveSetReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
+/*
+  Prepare to receive and process I2C messages according to
+  the rxMsg configuration.
+
+  Notes:
+    Called from thread context
+      Does not affect the processing of any message currently being received
+*/
+
+static INLINE
+  const I2CSlaveMsg *i2cSlaveReceive(I2CDriver *i2cp)
+/*
+  processing descriptor for the next received message
+*/
+{
+  return i2c_lld_get_slaveReceive(i2cp);
+}
+
+
+void i2cSlaveSetReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
+/*
+  Prepare to reply to subsequent I2C read requests from bus masters
+  according to the replyMsg configuration.
+
+  Notes:
+    Called from thread context
+      Does not affect the processing of any message reply being sent
+*/
+
+static INLINE
+  const I2CSlaveMsg *i2cSlaveReply(I2CDriver *i2cp)
+/*
+  processing descriptor for the next reply message
+*/
+{
+  return i2c_lld_get_slaveReply(i2cp);
+}
+
+static INLINE
+  i2caddr_t i2cSlaveTargetAdr(I2CDriver *i2cp)
+/*
+  target address of slave message being or last processed
+*/
+{
+  return i2c_lld_get_slaveTargetAdr(i2cp);
+}
+
+static INLINE
+  i2caddr_t i2cSlaveMatchedAdr(I2CDriver *i2cp)
+/*
+  target address of slave message just matched
+*/
+{
+  return i2c_lld_get_slaveMatchedAdr(i2cp);
+}
 
 
 static INLINE void
-  i2cSlaveReceiveI(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
+  i2cSlaveSetReceiveI(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 /*
   Prepare to receive and process I2C messages according to
   the rxMsg configuration.
@@ -166,11 +267,11 @@ static INLINE void
       Does not affect the processing of any message currently being received
 */
 {
-  i2c_lld_slaveReceive(i2cp, rxMsg);
+  i2c_lld_set_slaveReceive(i2cp, rxMsg);
 }
 
 static INLINE void
-  i2cSlaveReplyI(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
+  i2cSlaveSetReplyI(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 /*
   Prepare to reply to subsequent I2C read requests from bus masters
   according to the replyMsg configuration.
@@ -180,7 +281,7 @@ static INLINE void
       Does not affect the processing of any message reply being sent
 */
 {
-   i2c_lld_slaveReply(i2cp, replyMsg);
+   i2c_lld_set_slaveReply(i2cp, replyMsg);
 }
 
 

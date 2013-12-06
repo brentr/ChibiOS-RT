@@ -40,6 +40,14 @@
  */
 #define I2C_CLK_FREQ  ((STM32_PCLK1) / 1000000)
 
+/**
+ * @brief   Return codes from i2cSlaveAwaitEvent()
+ */
+#define I2C_OK        (RDY_OK)
+#define I2C_TIMEOUT   (RDY_TIMEOUT)
+#define I2C_ERROR     (RDY_RESET)
+#define I2C_QUERY     (RDY_RESET-1)
+
 /*===========================================================================*/
 /* Driver pre-compile time settings.                                         */
 /*===========================================================================*/
@@ -496,6 +504,10 @@ struct I2CDriver {
    */
   uint32_t                  slaveBytes;
   /**
+   * @brief     Maximum # of ticks slave may stretch the I2C clock
+   */
+  systime_t                 slaveTimeout;
+  /**
    * @brief     Pointer to slave message reception handler
    */
   const I2CSlaveMsg         *slaveRx;
@@ -526,6 +538,81 @@ struct I2CDriver {
  * @notapi
  */
 #define i2c_lld_get_errors(i2cp) ((i2cp)->errors)
+
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+/**
+ * @brief   Get slave errors from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveErrors(i2cp) ((i2cp)->slaveErrors)
+
+/**
+ * @brief   Get slave message bytes transferred from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveBytes(i2cp) ((i2cp)->slaveBytes)
+
+/**
+ * @brief   Get slave timeout in ticks from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveTimeout(i2cp) ((i2cp)->slaveTimeout)
+
+/**
+ * @brief   Set slave timeout in ticks for I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_set_slaveTimeout(i2cp,ticks) ((i2cp)->slaveTimeout=(ticks))
+
+/**
+ * @brief   Get slave target address from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveTargetAdr(i2cp) ((i2cp)->targetAdr)
+
+/**
+ * @brief   Get slave last matched (target) address from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveMatchedAdr(i2cp) ((i2cp)->nextTargetAdr)
+
+/**
+ * @brief   Get slave receive message descriptor from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveReceive(i2cp) ((i2cp)->slaveNextRx)
+
+/**
+ * @brief   Get slave reply message descriptor from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveReply(i2cp) ((i2cp)->slaveNextReply)
+
+#endif
 
 /*===========================================================================*/
 /* External declarations.                                                    */
@@ -560,11 +647,15 @@ extern "C" {
                                        systime_t timeout);
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
-  msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
+  int   i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
   void  i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
   void  i2c_lld_unmatchAll(I2CDriver *i2cp);
-  void  i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
-  void  i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
+  void  i2c_lld_set_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
+  void  i2c_lld_set_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
+  msg_t i2c_lld_slaveAwaitEvent(I2CDriver *i2cp,
+          uint8_t *inputBuffer, size_t size, i2caddr_t *targetAdr);
+  msg_t i2c_lld_slaveAnswer(I2CDriver *i2cp,
+                            const uint8_t *replyBuffer, size_t size);
 #endif /* HAL_USE_I2C_SLAVE */
 
 #ifdef __cplusplus
