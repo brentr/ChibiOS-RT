@@ -203,8 +203,8 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
              "i2c_lld_set_clock");
 
   /* CR2 Configuration.*/
-  dp->CR2 &= (uint16_t)~I2C_CR2_FREQ;
-  dp->CR2 |= (uint16_t)I2C_CLK_FREQ;
+  dp->CR2 &= ~I2C_CR2_FREQ;
+  dp->CR2 |= I2C_CLK_FREQ;
 
   /* CCR Configuration.*/
   regCCR = 0;
@@ -222,7 +222,7 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
                 "i2c_lld_set_clock(), #2",
                 "PCLK1 not divisible by 2*I2Cclk");
 #endif
-    clock_div = (uint16_t)(STM32_PCLK1 / (clock_speed * 2));
+    clock_div = STM32_PCLK1 / (clock_speed * 2);
 
     chDbgAssert(clock_div >= 0x04,
                 "i2c_lld_set_clock(), #3",
@@ -248,7 +248,7 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
                   "i2c_lld_set_clock(), #6",
                   "PCLK1 not divisible by 3*I2Cclk");
 #endif
-      clock_div = (uint16_t)(STM32_PCLK1 / (clock_speed * 3));
+      clock_div = STM32_PCLK1 / (clock_speed * 3);
     }
     else if (duty == FAST_DUTY_CYCLE_16_9) {
       /* Fast mode clock_div calculate: Tlow/Thigh = 16/9.*/
@@ -257,7 +257,7 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
                   "i2c_lld_set_clock(), #7",
                   "PCLK1 not divisible by 25*I2Cclk");
 #endif
-      clock_div = (uint16_t)(STM32_PCLK1 / (clock_speed * 25));
+      clock_div = STM32_PCLK1 / (clock_speed * 25);
       regCCR |= I2C_CCR_DUTY;
     }
 
@@ -291,14 +291,14 @@ static void i2c_lld_set_opmode(I2CDriver *i2cp) {
   regCR1 = dp->CR1;
   switch (opmode) {
   case OPMODE_I2C:
-    regCR1 &= (uint16_t)~(I2C_CR1_SMBUS|I2C_CR1_SMBTYPE);
+    regCR1 &= ~(I2C_CR1_SMBUS|I2C_CR1_SMBTYPE);
     break;
   case OPMODE_SMBUS_DEVICE:
     regCR1 |= I2C_CR1_SMBUS;
-    regCR1 &= (uint16_t)~(I2C_CR1_SMBTYPE);
+    regCR1 &= ~(I2C_CR1_SMBTYPE);
     break;
   case OPMODE_SMBUS_HOST:
-    regCR1 |= (I2C_CR1_SMBUS|I2C_CR1_SMBTYPE);
+    regCR1 |= I2C_CR1_SMBUS|I2C_CR1_SMBTYPE;
     break;
   }
   dp->CR1 = regCR1;
