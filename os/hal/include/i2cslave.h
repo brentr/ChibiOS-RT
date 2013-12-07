@@ -111,6 +111,7 @@ static INLINE
   returns mask of errors for last slave message (partially) received
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveErrors");
   return i2c_lld_get_slaveErrors(i2cp);
 }
 
@@ -118,11 +119,10 @@ static INLINE
   systime_t i2cSlaveTimeout(I2CDriver *i2cp)
 /*
   returns the maximum number of ticks slave may stretch the I2C clock
-  initialized to TIME_INFINITE (this duration is long and platform dependent)
-  Unlike master operations, the slave cannot be configured to
-  hold the I2C bus indefinately.
+  initialized to TIME_INFINITE (disabling slave mode bus lock timeouts)
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveTimeout");
   return i2c_lld_get_slaveTimeout(i2cp);
 }
 
@@ -131,9 +131,10 @@ static INLINE
 /*
   set the maximum number of ticks slave may stretch the I2C clock
   TIME_IMMEDIATE is invald
-  TIME_INFINITE is interpreted as a very long (but finite) delay.
+  TIME_INFINITE is disables slave mode bus lock timeouts
 */
 {
+  chDbgCheck((i2cp != NULL || ticks == TIME_IMMEDIATE), "i2cSlaveSetTimeout");
   i2c_lld_set_slaveTimeout(i2cp, ticks);
 }
 
@@ -185,6 +186,7 @@ static INLINE
   length of most recently received slave message
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveBytes");
   return i2c_lld_get_slaveBytes(i2cp);
 }
 
@@ -217,6 +219,7 @@ static INLINE
   processing descriptor for the next received message
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveReceiveMsg");
   return i2c_lld_get_slaveReceive(i2cp);
 }
 
@@ -227,6 +230,7 @@ static INLINE
   until i2cSlaveReceive is called with a non-null rxMsg parameter
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveLockReceive");
   return i2c_lld_lock_slaveReceive(i2cp);
 }
 
@@ -247,6 +251,7 @@ static INLINE
   processing descriptor for the next reply message
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveReplyMsg");
   return i2c_lld_get_slaveReply(i2cp);
 }
 
@@ -257,6 +262,7 @@ static INLINE
   until i2cSlaveReply is called with a non-null replyMsg parameter
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveLockReply");
   return i2c_lld_lock_slaveReply(i2cp);
 }
 
@@ -266,6 +272,7 @@ static INLINE
   target address of slave message being or last processed
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveTargetAdr");
   return i2c_lld_get_slaveTargetAdr(i2cp);
 }
 
@@ -275,6 +282,7 @@ static INLINE
   target address of slave message just matched
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveMatchedAdr");
   return i2c_lld_get_slaveMatchedAdr(i2cp);
 }
 
@@ -290,6 +298,7 @@ static INLINE void
       Does not affect the processing of any message currently being received
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveReceiveI");
   i2c_lld_slaveReceive(i2cp, rxMsg);
 }
 
@@ -304,6 +313,7 @@ static INLINE void
       Does not affect the processing of any message reply being sent
 */
 {
+   chDbgCheck((i2cp != NULL), "i2cSlaveReplyI");
    i2c_lld_slaveReply(i2cp, replyMsg);
 }
 
@@ -316,6 +326,7 @@ static INLINE msg_t
       Does not affect the processing of any message currently being received
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveMatchAddressI");
   return i2c_lld_matchAddress(i2cp, i2cadr);
 }
 
@@ -327,6 +338,7 @@ static INLINE void
       Does not affect the processing of any message currently being received
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveUnmatchAddressI");
   i2c_lld_unmatchAddress(i2cp, i2cadr);
 }
 
@@ -338,6 +350,7 @@ static INLINE void
       Does not affect the processing of any message currently being received
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveUnmatchAllI");
   i2c_lld_unmatchAll(i2cp);
 }
 
