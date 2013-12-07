@@ -380,7 +380,7 @@ typedef void
   Invoked from interrupt context just after
   the last byte of the message is transferred or slaveAdr is matched.
 
-  Use i2cSlaveGetReceiveMsg() or i2cSlaveGetReplyMsg() to access
+  Use i2cSlaveReceiveMsg() or i2cSlaveReplyMsg() to access
   the relevant message handling configuration
 */
 
@@ -396,8 +396,9 @@ typedef void
 struct I2CSlaveMsg {
   size_t     size;     /* sizeof(body) */
   uint8_t   *body;     /* message contents */
+  I2CSlaveMsgCB *adrMatched;  /* invoked when slave address matches */
   I2CSlaveMsgCB *processMsg;  /* invoked after message is transferred */
-  I2CSlaveMsgCB *adrMatched;  /* invoked earlier, when slave address matches */
+  I2CSlaveMsgCB *exception;   /* invoked if error or timeout during transfer */
 };
 #endif  /* HAL_USE_I2C_SLAVE */
 
@@ -482,7 +483,8 @@ struct I2CDriver {
   /**
    * @brief     low level I2C interface state
    */
-  enum {i2cIsSlave, i2cIsAwaitingRx, i2cIsAwaitingReply, i2cIsMaster}  mode;
+  enum i2cSlaveMode {i2cIsSlave, i2cSlaveRxing,  i2cSlaveReplying,
+                     i2cLockedRxing, i2cLockedReplying, i2cIsMaster}  mode;
   /**
    * @brief     slave address of message being processed
    */
@@ -507,6 +509,10 @@ struct I2CDriver {
    * @brief     Maximum # of ticks slave may stretch the I2C clock
    */
   systime_t                 slaveTimeout;
+  /**
+   * @brief     I2C clock stretch timer
+   */
+  VirtualTimer              slaveTimer;
   /**
    * @brief     Pointer to slave message reception handler
    */
@@ -612,6 +618,24 @@ struct I2CDriver {
  */
 #define i2c_lld_get_slaveReply(i2cp) ((i2cp)->slaveNextReply)
 
+/**
+ * @brief   Lock this I2C bus on next received message.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_lock_slaveReceive(i2cp) ((i2cp)->slaveNextRx=NULL)
+
+/**
+ * @brief   Lock this I2C bus on next query from master.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_lock_slaveReply(i2cp) ((i2cp)->slaveNextReply=NULL)
+
 #endif
 
 /*===========================================================================*/
@@ -650,8 +674,8 @@ extern "C" {
   int   i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
   void  i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
   void  i2c_lld_unmatchAll(I2CDriver *i2cp);
-  void  i2c_lld_set_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
-  void  i2c_lld_set_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
+  void  i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
+  void  i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
   msg_t i2c_lld_slaveAwaitEvent(I2CDriver *i2cp,
           uint8_t *inputBuffer, size_t size, i2caddr_t *targetAdr);
   msg_t i2c_lld_slaveAnswer(I2CDriver *i2cp,

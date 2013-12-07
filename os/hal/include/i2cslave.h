@@ -80,13 +80,13 @@ msg_t  i2cSlaveAwaitEvent(I2CDriver *i2cp,
 
   If returned value is >=0, it is the number of bytes received
   otherwise, the return value:
-    I2C_QUERY indicates master is awaiting a response from this slave
-    One should call i2cSendReply() before calling i2cSlaveAwaitMessage() again
+    I2C_QUERY indicates master is awaiting a response from this slave and that
+    one must call i2cSlaveAnswer() before next calling i2cSlaveAwaitMessage()
 
     I2C_ERROR indicates an error occured
     details can be retrieved via i2cGetErrors()
 
-    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
+    I2C_TIMEOUT implies slave locked the bus too long and it has been unlocked.
 */
 
 
@@ -101,14 +101,14 @@ msg_t  i2cSlaveAnswer(I2CDriver *i2cp,
     I2C_ERROR indicates that an error occured
     details can be retrieved via i2cGetErrors()
 
-    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
+    I2C_TIMEOUT implies slave locked the bus too long and it has been unlocked.
 */
 
 
 static INLINE
   i2cflags_t i2cSlaveErrors(I2CDriver *i2cp)
 /*
-  mask of errors for last slave message (partially) received
+  returns mask of errors for last slave message (partially) received
 */
 {
   return i2c_lld_get_slaveErrors(i2cp);
@@ -117,8 +117,10 @@ static INLINE
 static INLINE
   systime_t i2cSlaveTimeout(I2CDriver *i2cp)
 /*
-  get the number of ticks before the operation timeouts
-  initialized to TIME_INFINITE (slave operations do not timeout until changed)
+  returns the maximum number of ticks slave may stretch the I2C clock
+  initialized to TIME_INFINITE (this duration is long and platform dependent)
+  Unlike master operations, the slave cannot be configured to
+  hold the I2C bus indefinately.
 */
 {
   return i2c_lld_get_slaveTimeout(i2cp);
@@ -127,7 +129,9 @@ static INLINE
 static INLINE
   void i2cSlaveSetTimeout(I2CDriver *i2cp, systime_t ticks)
 /*
-  set the number of ticks before the operation timeouts
+  set the maximum number of ticks slave may stretch the I2C clock
+  TIME_IMMEDIATE is invald
+  TIME_INFINITE is interpreted as a very long (but finite) delay.
 */
 {
   i2c_lld_set_slaveTimeout(i2cp, ticks);
@@ -138,31 +142,30 @@ static INLINE
 /*
   Advanced Usage with Asynchronous Callback functions:
 
-  Asynchronous callback functions are used internally to implement
-  i2cSlaveAwaitMessage() described above.
+  Asynchronous callback functions that are used internally to implement
+  i2cSlaveAwaitMessage() and i2cSlaveAnswer() above are described below:
 
-  i2cSlaveAwaitMessage() will conflict with the i2cSlaveReceive and
-  i2cSlaveReply functions defined below, except for the case of
-  calling i2cSlaveReply() to answer an I2C_QUERY.
+  i2cSlaveAwaitMessage() and i2cSlaveAnswer() will conflict with the
+  functions defined below.
 
   Each callback function may alter the processing of subsequent I2C
-  messages and read requests by calling i2cSlaveReceiveI() and
-  i2cSlaveReplyI(), respectively.
+  messages and read requests by calling i2cSlaveReceive() and
+  i2cSlaveReply(), respectively.
 
   If an I2CSlaveMsg struct is in RAM, these callbacks may alter them.
   Such changes take immediate affect.  This facility can be used to
   avoid copying message buffers.
 
   If receive buffers become full or a reply to a read request cannot be
-  immediately generated, a I2CSlaveMsg pointer may be set to NULL, via
-  i2cSlaveReceive() or i2cSlaveReply(), as appropriate.
+  immediately generated, an I2CSlaveMsg pointer may be set to NULL, via
+  i2cSlaveLockOnReceive() or i2cSlaveLockOnReply(), as appropriate.
   This signals the master node to wait by holding the I2C clock signal
   low -- stretching the I2C clock -- on the next transaction to which
   that I2CSlaveMsg applies.
-  The I2C bus is unlocked only after a i2cSlaveReceive() or Reply() is
+  The I2C bus is unlocked only after a i2cSlaveSetReceive() or SetReply() is
   called with a non-NULL I2CSlaveMsg pointer.
 
-  All I2CSlaveMsg pointers are initially NULL
+  All Receive and Reply are initially Locked.
 */
 
 static INLINE
@@ -198,7 +201,7 @@ void i2cSlaveConfigure(I2CDriver *i2cp,
       result in locking the I2C bus when a master accesses those slave addresses
 */
 
-void i2cSlaveSetReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
+void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
 /*
   Prepare to receive and process I2C messages according to
   the rxMsg configuration.
@@ -209,7 +212,7 @@ void i2cSlaveSetReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
 */
 
 static INLINE
-  const I2CSlaveMsg *i2cSlaveReceive(I2CDriver *i2cp)
+  const I2CSlaveMsg *i2cSlaveReceiveMsg(I2CDriver *i2cp)
 /*
   processing descriptor for the next received message
 */
@@ -217,8 +220,18 @@ static INLINE
   return i2c_lld_get_slaveReceive(i2cp);
 }
 
+static INLINE
+  const I2CSlaveMsg *i2cSlaveLockReceive(I2CDriver *i2cp)
+/*
+  Lock the I2C bus on reception of next message
+  until i2cSlaveReceive is called with a non-null rxMsg parameter
+*/
+{
+  return i2c_lld_lock_slaveReceive(i2cp);
+}
 
-void i2cSlaveSetReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
+
+void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
 /*
   Prepare to reply to subsequent I2C read requests from bus masters
   according to the replyMsg configuration.
@@ -229,12 +242,22 @@ void i2cSlaveSetReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
 */
 
 static INLINE
-  const I2CSlaveMsg *i2cSlaveReply(I2CDriver *i2cp)
+  const I2CSlaveMsg *i2cSlaveReplyMsg(I2CDriver *i2cp)
 /*
   processing descriptor for the next reply message
 */
 {
   return i2c_lld_get_slaveReply(i2cp);
+}
+
+static INLINE
+  const I2CSlaveMsg *i2cSlaveLockReply(I2CDriver *i2cp)
+/*
+  Lock the I2C bus on next query
+  until i2cSlaveReply is called with a non-null replyMsg parameter
+*/
+{
+  return i2c_lld_lock_slaveReply(i2cp);
 }
 
 static INLINE
@@ -257,7 +280,7 @@ static INLINE
 
 
 static INLINE void
-  i2cSlaveSetReceiveI(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
+  i2cSlaveReceiveI(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 /*
   Prepare to receive and process I2C messages according to
   the rxMsg configuration.
@@ -267,11 +290,11 @@ static INLINE void
       Does not affect the processing of any message currently being received
 */
 {
-  i2c_lld_set_slaveReceive(i2cp, rxMsg);
+  i2c_lld_slaveReceive(i2cp, rxMsg);
 }
 
 static INLINE void
-  i2cSlaveSetReplyI(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
+  i2cSlaveReplyI(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 /*
   Prepare to reply to subsequent I2C read requests from bus masters
   according to the replyMsg configuration.
@@ -281,7 +304,7 @@ static INLINE void
       Does not affect the processing of any message reply being sent
 */
 {
-   i2c_lld_set_slaveReply(i2cp, replyMsg);
+   i2c_lld_slaveReply(i2cp, replyMsg);
 }
 
 

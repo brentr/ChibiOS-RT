@@ -258,6 +258,54 @@ msg_t i2cMasterReceiveTimeout(I2CDriver *i2cp,
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 
+msg_t i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
+/*
+    Respond to messages directed to the given i2cadr.
+    MatchAddress calls are cumulative.
+    Specify address zero to match I2C "all call"
+
+    Does not support 10-bit addressing.
+*/
+{
+  chDbgCheck((i2cp != NULL), "i2cMatchAddress");
+  msg_t result;
+  chSysLock();
+  result = i2c_lld_matchAddress(i2cp, i2cadr);
+  chSysUnlock();
+  return result;
+}
+
+
+void i2cUnmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
+/*
+    Do not match specified i2cadr.
+    A message being transferred that has already matched the specified address
+    will continue being processed.
+    Requests to unmatch an address that is not currently being matched
+    are ignored.
+*/
+{
+  chDbgCheck((i2cp != NULL), "i2cUnmatchAddress");
+  chSysLock();
+  i2c_lld_unmatchAddress(i2cp, i2cadr);
+  chSysUnlock();
+}
+
+
+void i2cUnmatchAll(I2CDriver *i2cp)
+/*
+    Clears all match addresses.  Causes all subsequent messages to be ignored.
+    A message being transferred that has already matched a slave address
+    will continue being processed.
+*/
+{
+  chDbgCheck((i2cp != NULL), "i2cUnmatchAll");
+  chSysLock();
+  i2c_lld_unmatchAll(i2cp);
+  chSysUnlock();
+}
+
+
 msg_t  i2cSlaveAwaitEvent(I2CDriver *i2cp,
                           uint8_t *inputBuffer,
                           size_t size,
@@ -278,8 +326,7 @@ msg_t  i2cSlaveAwaitEvent(I2CDriver *i2cp,
     I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
 */
 {
-  chDbgCheck((i2cp != NULL),
-             "i2cSlaveAwaitEvent");
+  chDbgCheck((i2cp != NULL), "i2cSlaveAwaitEvent");
   chSysLock();
   msg_t result = i2c_lld_slaveAwaitEvent(i2cp, inputBuffer, size, targetAdr);
   chSysUnlock();
@@ -310,6 +357,9 @@ msg_t  i2cSlaveAnswer(I2CDriver *i2cp,
   return result;
 }
 
+
+/*  Support for "advanced" asychronous API  */
+
 void i2cSlaveConfigure(I2CDriver *i2cp,
                    const I2CSlaveMsg *rxMsg, const I2CSlaveMsg *replyMsg)
 /*
@@ -322,13 +372,14 @@ void i2cSlaveConfigure(I2CDriver *i2cp,
       result in locking the I2C bus when a master accesses those slave addresses
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveConfigure");
   chSysLock();
-  i2c_lld_set_slaveReceive(i2cp, rxMsg);
-  i2c_lld_set_slaveReply(i2cp, replyMsg);
+  i2c_lld_slaveReceive(i2cp, rxMsg);
+  i2c_lld_slaveReply(i2cp, replyMsg);
   chSysUnlock();
 }
 
-void i2cSlaveSetReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
+void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 /*
   Prepare to receive and process I2C messages according to
   the rxMsg configuration.
@@ -337,8 +388,9 @@ void i2cSlaveSetReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
       Does not affect the processing of any message currently being received
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveReceive");
   chSysLock();
-  i2c_lld_set_slaveReceive(i2cp, rxMsg);
+  i2c_lld_slaveReceive(i2cp, rxMsg);
   chSysUnlock();
 }
 
@@ -351,53 +403,9 @@ void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
       Does not affect the processing of any message reply being sent
 */
 {
+  chDbgCheck((i2cp != NULL), "i2cSlaveReply");
   chSysLock();
-  i2c_lld_set_slaveReply(i2cp, replyMsg);
-  chSysUnlock();
-}
-
-
-msg_t i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
-/*
-    Respond to messages directed to the given i2cadr.
-    MatchAddress calls are cumulative.
-    Specify address zero to match I2C "all call"
-
-    Does not support 10-bit addressing.
-*/
-{
-  msg_t result;
-  chSysLock();
-  result = i2c_lld_matchAddress(i2cp, i2cadr);
-  chSysUnlock();
-  return result;
-}
-
-
-void i2cUnmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
-/*
-    Do not match specified i2cadr.
-    A message being transferred that has already matched the specified address
-    will continue being processed.
-    Requests to unmatch an address that is not currently being matched
-    are ignored.
-*/
-{
-  chSysLock();
-  i2c_lld_unmatchAddress(i2cp, i2cadr);
-  chSysUnlock();
-}
-
-
-void i2cUnmatchAll(I2CDriver *i2cp)
-/*
-    Clears all match addresses.  Causes all subsequent messages to be ignored.
-    A message being transferred that has already matched a slave address
-    will continue being processed.
-*/
-{
-  chSysLock();
-  i2c_lld_unmatchAll(i2cp);
+  i2c_lld_slaveReply(i2cp, replyMsg);
   chSysUnlock();
 }
 
