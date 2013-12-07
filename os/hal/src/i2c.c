@@ -191,8 +191,8 @@ msg_t i2cMasterTransmitTimeout(I2CDriver *i2cp,
                                systime_t timeout) {
   msg_t rdymsg;
 
-  chDbgCheck((i2cp != NULL) && (addr != 0) &&
-             (txbytes > 0) && (txbuf != NULL) &&
+  chDbgCheck((i2cp != NULL) &&
+             ((txbytes == 0) || ((txbytes > 0) && (txbuf != NULL))) &&
              ((rxbytes == 0) || ((rxbytes > 0) && (rxbuf != NULL))) &&
              (timeout != TIME_IMMEDIATE),
              "i2cMasterTransmitTimeout");
@@ -238,7 +238,7 @@ msg_t i2cMasterReceiveTimeout(I2CDriver *i2cp,
 
   msg_t rdymsg;
 
-  chDbgCheck((i2cp != NULL) && (addr != 0) &&
+  chDbgCheck((i2cp != NULL) &&
              (rxbytes > 0) && (rxbuf != NULL) &&
              (timeout != TIME_IMMEDIATE),
              "i2cMasterReceiveTimeout");
@@ -358,7 +358,7 @@ msg_t  i2cSlaveAnswer(I2CDriver *i2cp,
 }
 
 
-/*  Support for "advanced" asychronous API  */
+/*  Support for "advanced" asynchronous API  */
 
 void i2cSlaveConfigure(I2CDriver *i2cp,
                    const I2CSlaveMsg *rxMsg, const I2CSlaveMsg *replyMsg)

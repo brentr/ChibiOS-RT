@@ -134,7 +134,7 @@ static INLINE
   TIME_INFINITE is disables slave mode bus lock timeouts
 */
 {
-  chDbgCheck((i2cp != NULL || ticks == TIME_IMMEDIATE), "i2cSlaveSetTimeout");
+  chDbgCheck((i2cp != NULL && ticks != TIME_IMMEDIATE), "i2cSlaveSetTimeout");
   i2c_lld_set_slaveTimeout(i2cp, ticks);
 }
 
