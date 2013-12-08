@@ -621,6 +621,8 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
       wakeup_isr(&i2cp->thread, I2C_OK);
     }
     break;
+  case 0:   /* quietly ignore these occasional spurious events */
+    break;
   default:  /* unhandled event -- abort transaction, flag unknown err */
     dp->CR1 = regCR1;              /* clears possible I2C_SR1_STOPF */
     (void)dp->SR1; (void)dp->SR2;  /* clears possible I2C_SR1_ADDR */
