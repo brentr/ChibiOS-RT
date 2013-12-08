@@ -501,6 +501,12 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 #endif
 }
 
+/* quick and dirty queue to record event interrupts */
+#define QEVENTS 0
+#if QEVENTS
+uint32_t i2cQ[QEVENTS];
+unsigned i2cI = QEVENTS;
+#endif
 
 /**
  * @brief   I2C shared ISR code.
@@ -515,10 +521,16 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   uint32_t regSR2 = dp->SR2;
   uint32_t event = dp->SR1 | (regSR2 << 16);
 
+#if QEVENTS
+  if (++i2cI >= QEVENTS)
+    i2cI = 0;
+  i2cQ[i2cI]=event;
+#endif
+
   switch (event & I2C_EV_MASK) {
 
 #if HAL_USE_I2C_SLAVE
-  case I2C_EV1_SLAVE_RXADRMATCH:
+   case I2C_EV1_SLAVE_RXADRMATCH:
     {
       i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
@@ -543,7 +555,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
       lockedBus(i2cp, i2cLockedRxing);
     }
     break;
-  case I2C_EV2_SLAVE_RXSTOP:
+   case I2C_EV2_SLAVE_RXSTOP:
     {
       dp->CR1 = regCR1;  /* dummy write just to clear I2C_SR1_STOPF */
       const I2CSlaveMsg *rx = i2cp->slaveRx;
@@ -557,7 +569,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
       i2cp->mode = i2cIsSlave;
     }
     break;
-  case I2C_EV1_SLAVE_TXADRMATCH:
+   case I2C_EV1_SLAVE_TXADRMATCH:
     {
       i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
@@ -584,11 +596,11 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     break;
 #endif  /* HAL_USE_I2C_SLAVE */
 
-  case I2C_EV5_MASTER_MODE_SELECT:
+   case I2C_EV5_MASTER_MODE_SELECT:
     dp->DR = i2cp->addr;
     setSlaveMode(i2cp, i2cIsMaster);
     break;
-  case I2C_EV6_MASTER_REC_MODE_SELECTED:
+   case I2C_EV6_MASTER_REC_MODE_SELECTED:
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* RX DMA setup.*/
@@ -600,7 +612,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     if (dmaStreamGetTransactionSize(i2cp->dmarx) < 2)
       dp->CR1 &= ~I2C_CR1_ACK;
     break;
-  case I2C_EV6_MASTER_TRA_MODE_SELECTED:
+   case I2C_EV6_MASTER_TRA_MODE_SELECTED:
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* TX DMA setup.*/
@@ -609,7 +621,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     dmaStreamSetTransactionSize(i2cp->dmatx, i2cp->masterTxbytes);
     dmaStreamEnable(i2cp->dmatx);
     break;
-  case I2C_EV8_2_MASTER_BYTE_TRANSMITTED:
+   case I2C_EV8_2_MASTER_BYTE_TRANSMITTED:
     /* Catches BTF event after the end of transmission.*/
     if (i2cp->masterRxbytes > 0) {
       /* Starts "read after write" operation, LSB = 1 -> receive.*/
@@ -621,9 +633,9 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
       wakeup_isr(&i2cp->thread, I2C_OK);
     }
     break;
-  case 0:   /* quietly ignore these occasional spurious events */
+   case 0:   /* quietly ignore these occasional spurious events */
     break;
-  default:  /* unhandled event -- abort transaction, flag unknown err */
+   default:  /* unhandled event -- abort transaction, flag unknown err */
     dp->CR1 = regCR1;              /* clears possible I2C_SR1_STOPF */
     (void)dp->SR1; (void)dp->SR2;  /* clears possible I2C_SR1_ADDR */
     i2c_lld_serve_error_interrupt(i2cp, event);
@@ -832,6 +844,9 @@ void i2c_lld_init(void) {
   I2CD1.i2c    = I2C1;
   I2CD1.dmarx  = STM32_DMA_STREAM(STM32_I2C_I2C1_RX_DMA_STREAM);
   I2CD1.dmatx  = STM32_DMA_STREAM(STM32_I2C_I2C1_TX_DMA_STREAM);
+#if HAL_USE_I2C_SLAVE
+  chVTInit(&I2CD1.slaveTimer);
+#endif
 #endif /* STM32_I2C_USE_I2C1 */
 
 #if STM32_I2C_USE_I2C2
@@ -840,6 +855,9 @@ void i2c_lld_init(void) {
   I2CD2.i2c    = I2C2;
   I2CD2.dmarx  = STM32_DMA_STREAM(STM32_I2C_I2C2_RX_DMA_STREAM);
   I2CD2.dmatx  = STM32_DMA_STREAM(STM32_I2C_I2C2_TX_DMA_STREAM);
+#if HAL_USE_I2C_SLAVE
+  chVTInit(&I2CD2.slaveTimer);
+#endif
 #endif /* STM32_I2C_USE_I2C2 */
 
 #if STM32_I2C_USE_I2C3
@@ -848,6 +866,9 @@ void i2c_lld_init(void) {
   I2CD3.i2c    = I2C3;
   I2CD3.dmarx  = STM32_DMA_STREAM(STM32_I2C_I2C3_RX_DMA_STREAM);
   I2CD3.dmatx  = STM32_DMA_STREAM(STM32_I2C_I2C3_TX_DMA_STREAM);
+#if HAL_USE_I2C_SLAVE
+  chVTInit(&I2CD3.slaveTimer);
+#endif
 #endif /* STM32_I2C_USE_I2C3 */
 }
 
@@ -1056,6 +1077,7 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
 #endif
 
   /* Global timeout for the whole operation.*/
+  chVTInit(&vt);
   if (timeout != TIME_INFINITE)
     chVTSetI(&vt, timeout, i2c_lld_safety_timeout, (void *)i2cp);
 
@@ -1117,6 +1139,7 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
 #endif
 
   /* Global timeout for the whole operation.*/
+  chVTInit(&vt);
   if (timeout != TIME_INFINITE)
     chVTSetI(&vt, timeout, i2c_lld_safety_timeout, (void *)i2cp);
 
