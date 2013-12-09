@@ -524,7 +524,7 @@ unsigned i2cI = QEVENTS;
 
 
 /**
- * @brief   I2C shared ISR code.
+ * @brief   I2C event handler ISR
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  *
@@ -1093,9 +1093,11 @@ void i2c_lld_stop(I2CDriver *i2cp) {
  * @retval I2C_OK       if the function succeeded.
  * @retval I2C_ERROR    if one or more I2C errors occurred, the errors can
  *                      be retrieved using @p i2cGetErrors().
- * @retval I2C_TIMEOUT  if a timeout occurred before operation end. <b>After a
- *                      timeout the driver must be stopped and restarted
- *                      because the bus is in an uncertain state</b>.
+ * @retval I2C_TIMEOUT  A timeout occurred before operation end. <b>After a
+ *                      timeout the driver should be stopped and restarted
+ *                      because the bus may in an uncertain state</b>.
+ * Drivers that support slave mode require only the the driver be restarted
+ * after a timeout, as stopping and restarting may result in missed events.
  *
  * @notapi
  */
@@ -1123,6 +1125,11 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
   /* store away DMA info for later activation in event ISR */
   i2cp->masterRxbuf = rxbuf;
   i2cp->masterRxbytes = (uint16_t) rxbytes;
+
+#if CH_DBG_SYSTEM_STATE_CHECK
+  if (i2cp->thread)
+    chDbgPanic("I2C RX reentry");
+#endif
 
   /* Starts the operation.*/
   dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
@@ -1152,9 +1159,11 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
  * @retval I2C_OK       if the function succeeded.
  * @retval I2C_ERROR    if one or more I2C errors occurred, the errors can
  *                      be retrieved using @p i2cGetErrors().
- * @retval I2C_TIMEOUT  if a timeout occurred before operation end. <b>After a
- *                      timeout the driver must be stopped and restarted
+ * @retval I2C_TIMEOUT  A timeout occurred before operation end. <b>After a
+ *                      timeout the driver should be stopped and restarted
  *                      because the bus is in an uncertain state</b>.
+ * Drivers that support slave mode require only the the driver be restarted
+ * after a timeout, as stopping and restarting may result in missed events.
  *
  * @notapi
  */
@@ -1188,6 +1197,11 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   i2cp->masterRxbuf = rxbuf;
   i2cp->masterRxbytes = (uint16_t) rxbytes;
 
+#if CH_DBG_SYSTEM_STATE_CHECK
+  if (i2cp->thread)
+    chDbgPanic("I2C TX reentry");
+#endif
+
   /* Starts the operation.*/
   dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
   i2cp->thread = chThdSelf();
@@ -1204,14 +1218,26 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
 #define I2C_OAR1_Ack_7bit     (0x4000)  /*enable 7 bit address acknowledge*/
 #define I2C_OAR1_Ack_10bit    (0xC000)  /*enable 10bit address acknowledge*/
 
+/**
+ * @brief   Reconfigure I2C channel to respond to indicated address
+ *          in addition to those already matched
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] i2cadr    I2C network address
+ *
+ * @return              Length of message OR the type of event received
+ * @retval 0            Success
+ * @retval <0           Cannot match address in addition of those already
+ *
+ * *notes
+ *  MatchAddress calls are cumulative.
+ *   Specify address zero to match I2C "all call"
+ *
+ *  Does not support 10-bit addressing.
+ *
+ * @notapi
+ **/
 int i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
-/*
-    Respond to messages directed to the given i2cadr.
-    MatchAddress calls are cumulative.
-    Specify address zero to match I2C "all call"
-
-    Does not support 10-bit addressing.
-*/
 {
   I2C_TypeDef *dp = i2cp->i2c;
   if (i2cadr == 0) {
@@ -1231,14 +1257,22 @@ int i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
 }
 
 
+/**
+ * @brief   Reconfigure I2C channel to no longer match specified address
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] i2cadr    I2C network address
+ *
+ *  A message being transferred that has already matched the specified address
+ *  will continue being processed.
+ *  Requests to unmatch an address that is not currently being matched
+ *  are ignored.
+ *
+ *   Does not support 10-bit addressing.
+ *
+ * @notapi
+ **/
 void i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
-/*
-    Do not match specified i2cadr.
-    A message being transferred that has already matched the specified address
-    will continue being processed.
-    Requests to unmatch an address that is not currently being matched
-    are ignored.
-*/
 {
   I2C_TypeDef *dp = i2cp->i2c;
   if (i2cadr == 0) {
@@ -1258,12 +1292,18 @@ void i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
 }
 
 
+/**
+ * @brief   Reconfigure I2C channel to no longer match any address
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ *  Clears all match addresses.  Causes all subsequent messages to be ignored.
+ *  A message being transferred that has already matched a slave address
+ *  will continue being processed.
+ *
+ * @notapi
+ **/
 void i2c_lld_unmatchAll(I2CDriver *i2cp)
-/*
-    Clears all match addresses.  Causes all subsequent messages to be ignored.
-    A message being transferred that has already matched a slave address
-    will continue being processed.
-*/
 {
   I2C_TypeDef *dp = i2cp->i2c;
   dp->CR1 &= ~I2C_CR1_ENGC;
@@ -1272,14 +1312,20 @@ void i2c_lld_unmatchAll(I2CDriver *i2cp)
 }
 
 
+/**
+ * @brief   Prepare to receive and process I2C messages
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] rxMsg     pointer to the @p I2CSlaveMsg struct (or NULL)
+ *
+ *  A NULL rxMsg will cause the I2C bus to stall on the next write
+ *  to this slave until this function is called with a non-NULL rxMsg
+ *
+ *    Does not affect the processing of a message currently being received
+ *
+ * @notapi
+ **/
 void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
-/*
-  Prepare to receive and process I2C messages according to
-  the rxMsg configuration.
-
-  Notes:
-      Does not affect the processing of any message currently being received
-*/
 {
   chDbgCheck((rxMsg->size-1 < 0xffff), "i2c_lld_slaveReceive");
   i2cp->slaveNextRx = rxMsg;
@@ -1302,14 +1348,20 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 }
 
 
+/**
+ * @brief   Prepare to reply to I2C queries
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] rxMsg     pointer to the @p I2CSlaveMsg struct (or NULL)
+ *
+ *  A NULL rxMsg will cause the I2C bus to stall on the next write
+ *  to this slave until this function is called with a non-NULL rxMsg
+ *
+ *    Does not affect the processing of a message currently being received
+ *
+ * @notapi
+ **/
 void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
-/*
-  Prepare to reply to subsequent I2C read requests from bus masters
-  according to the replyMsg configuration.
-
-  Notes:
-      Does not affect the processing of any message reply being sent
-*/
 {
   chDbgCheck((replyMsg->size-1 < 0xffff), "i2c_lld_slaveReply");
   i2cp->slaveNextReply = replyMsg;
@@ -1354,35 +1406,36 @@ static void
 }
 
 
+/**
+ * @brief   Prepare to reply to I2C queries
+ *
+ * @param[in] i2cp          pointer to the @p I2CDriver object
+ * @param[out] inputBuffer  pointer to where to store received message body
+ * @param[in] size          size of inputBuffer
+ * @param[out] targetAdr    if non-NULL, store target address of message here
+ *
+ * @return              Length of message OR the type of event received
+ * @retval >=0          Length message received
+ * @retval I2C_QUERY    Master is awaiting a response via i2cSlaveReply()
+ * @retval I2C_ERROR    if one or more I2C errors occurred, the errors can
+ *                      be retrieved using @p i2cGetErrors().
+ * @retval I2C_TIMEOUT  Did not call i2cSlaveReply() in time.   The I2C bus
+ *                      had been locked too long and has been unlocked.
+ * @notapi
+ **/
 msg_t  i2c_lld_slaveAwaitEvent(I2CDriver *i2cp,
                                uint8_t *inputBuffer,
                                size_t size,
                                i2caddr_t *targetAdr)
-/*
-  If inputBuffer is non-NULL
-    Waits for a received message, query, error, or timeout.
-    Incoming messages are received into inputBuffer,
-  If inputBuffer is NULL,
-    Waits only for error or timeout.
-  If non-NULL, *targetAdr is assigned the target address.
-
-  If returned value is >=0, it is the number of bytes received
-  otherwise, the return value:
-    I2C_QUERY implies master is awaiting a response from this slave
-    One should call i2cSlaveReply() before calling i2cSlaveAwaitEvent() again
-
-    I2C_ERROR implies an error occured
-    details can be retrieved via i2cGetErrors()
-
-    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
-*/
 {
-  if (inputBuffer) {
-    const I2CSlaveMsg rx    = {size, inputBuffer, NULL, wakeOnRx, wakeOnError};
-    const I2CSlaveMsg reply = {0, NULL, wakeOnQuery, NULL, wakeOnError};
-    i2c_lld_slaveReceive(i2cp, &rx);
-    i2c_lld_slaveReply(i2cp, &reply);
-  }
+  const I2CSlaveMsg rx    = {size, inputBuffer, NULL, wakeOnRx, wakeOnError};
+  const I2CSlaveMsg reply = {0, NULL, wakeOnQuery, NULL, wakeOnError};
+#if CH_DBG_SYSTEM_STATE_CHECK
+  if (i2cp->slaveThread)
+       chDbgPanic("I2CawaitEvent reentry");
+#endif
+  i2c_lld_slaveReceive(i2cp, &rx);
+  i2c_lld_slaveReply(i2cp, &reply);
   i2cp->slaveThread = chThdSelf();
   chSchGoSleepS(THD_STATE_SUSPENDED);
   if (targetAdr)
@@ -1398,22 +1451,33 @@ static void
   wakeup_isr(&i2cp->slaveThread, i2cp->slaveBytes);
 }
 
+
+/**
+ * @brief   Prepare to reply to I2C queries
+ *
+ * @param[in] i2cp          pointer to the @p I2CDriver object
+ * @param[in] replyBuffer   pointer to body of reply
+ * @param[in] size          size of replyBuffer
+ *
+ * @return              Length of message OR the type of event received
+ * @retval >= 0         Length of reply transmitted (may be >size)
+ * @retval I2C_QUERY    Master is awaiting a response via i2cSlaveReply()
+ * @retval I2C_ERROR    if one or more I2C errors occurred, the errors can
+ *                      be retrieved using @p i2cGetErrors().
+ * @retval I2C_TIMEOUT  Did not call i2cSlaveReply() in time.   The I2C bus
+ *
+ *                      had been locked too long and has been unlocked.
+ * @notapi
+ **/
 msg_t i2c_lld_slaveAnswer(I2CDriver *i2cp,
                           const uint8_t *replyBuffer, size_t size)
-/*
-  Blocks until replyBuffer is sent back to the requesting master.
-  Invoke directly after i2cSlaveAwaitEvent() returns I2C_QUERY.
-
-  If returned value is >=0, it is the number of bytes transmitted
-  otherwise, the return value:
-    I2C_ERROR indicates that an error occured
-    details can be retrieved via i2cGetErrors()
-
-    I2C_TIMEOUT implies the bus remained locked too long and has been unlocked.
-*/
 {
   const I2CSlaveMsg answer =
     {size, (uint8_t *)replyBuffer, NULL, wakeWhenSent, wakeOnError};
+#if CH_DBG_SYSTEM_STATE_CHECK
+  if (i2cp->slaveThread)
+       chDbgPanic("I2CslaveAnswer reentry");
+#endif
   i2c_lld_slaveReply(i2cp, &answer);
   i2cp->slaveThread = chThdSelf();
   chSchGoSleepS(THD_STATE_SUSPENDED);

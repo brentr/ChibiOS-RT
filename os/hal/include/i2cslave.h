@@ -89,7 +89,6 @@ msg_t  i2cSlaveAwaitEvent(I2CDriver *i2cp,
     I2C_TIMEOUT implies slave locked the bus too long and it has been unlocked.
 */
 
-
 msg_t  i2cSlaveAnswer(I2CDriver *i2cp,
                       const uint8_t *replyBuffer, size_t size);
 /*
@@ -168,17 +167,6 @@ static INLINE
 
   All Receive and Reply are initially Locked.
 */
-
-static INLINE
-  msg_t  i2cSlaveAwaitError(I2CDriver *i2cp, i2caddr_t *targetAdr)
-/*
-  Waits for I2C error or timeout
-  Received messages and queries are to be handled via callback functions
-  This is the recommended way to be notified of errors when using callbacks
-*/
-{
-  return i2cSlaveAwaitEvent(i2cp, NULL, 0, targetAdr);
-}
 
 static INLINE
   size_t i2cSlaveBytes(I2CDriver *i2cp)
