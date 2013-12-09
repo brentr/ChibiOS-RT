@@ -192,10 +192,10 @@ msg_t i2cMasterTransmitTimeout(I2CDriver *i2cp,
   msg_t rdymsg;
 
   chDbgCheck((i2cp != NULL) &&
-             ((txbytes == 0) || ((txbytes > 0) && (txbuf != NULL))) &&
-             ((rxbytes == 0) || ((rxbytes > 0) && (rxbuf != NULL))) &&
-             (timeout != TIME_IMMEDIATE),
-             "i2cMasterTransmitTimeout");
+      ((txbytes == 0) || ((txbytes > 0) && (txbuf != NULL))) &&
+      ((rxbytes == 0) || ((rxbytes > 0) && (rxbuf != NULL) && (addr != 0))) &&
+      (timeout != TIME_IMMEDIATE),
+      "i2cMasterTransmitTimeout");
 
   chDbgAssert(i2cp->state == I2C_READY,
               "i2cMasterTransmitTimeout(), #1", "not ready");
@@ -238,7 +238,7 @@ msg_t i2cMasterReceiveTimeout(I2CDriver *i2cp,
 
   msg_t rdymsg;
 
-  chDbgCheck((i2cp != NULL) &&
+  chDbgCheck((i2cp != NULL) && (addr != 0) &&
              (rxbytes > 0) && (rxbuf != NULL) &&
              (timeout != TIME_IMMEDIATE),
              "i2cMasterReceiveTimeout");
