@@ -481,10 +481,20 @@ struct I2CDriver {
 #if HAL_USE_I2C_SLAVE
   /* additional fields to support I2C slave transactions */
   /**
-   * @brief     low level I2C interface state
+   * @brief     low level I2C interface / protocol state
    */
-  enum i2cSlaveMode {i2cIsSlave, i2cSlaveRxing,  i2cSlaveReplying,
-                     i2cLockedRxing, i2cLockedReplying, i2cIsMaster}  mode;
+  enum i2cSlaveMode {
+    i2cIsSlave=1,       /* awaiting address */
+    i2cSlaveRxing,      /* receiving message */
+    i2cSlaveReplying,   /* replying to query */
+    i2cLockedRxing,     /* stretching clock while receiving message */
+    i2cLockedReplying,  /* stretching clock while replying to query */
+
+    i2cIsMaster=0x11,   /* sent start bit (mastering bus) */
+    i2cMasterRxing,     /* receiving reply from slave */
+    i2cMasterTxing,     /* sending message to slave */
+    }  mode;
+
   /**
    * @brief     slave address of message being processed
    */

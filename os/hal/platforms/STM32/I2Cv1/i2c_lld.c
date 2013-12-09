@@ -422,6 +422,41 @@ static INLINE void unlockedBus(I2CDriver *i2cp, enum i2cSlaveMode unlockedMode)
 #endif  /* HAL_USE_I2C_SLAVE */
 
 /**
+ * @brief   report error waking thread or invoking callback as appropriate
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] errCode   error bit mask or code
+ *
+ * @notapi
+ */
+void reportErrs(I2CDriver *i2cp, i2cflags_t errCode)
+{
+  /* Disable any active DMA */
+  dmaStreamDisable(i2cp->dmatx);
+  dmaStreamDisable(i2cp->dmarx);
+#if HAL_USE_I2C_SLAVE
+  if (i2cp->mode < i2cIsMaster) {
+    i2cp->slaveErrors = errCode;
+    const I2CSlaveMsg *xfer =
+      i2cp->mode == i2cSlaveReplying || i2cp->mode == i2cLockedReplying ?
+      i2cp->slaveReply : i2cp->slaveRx;
+    if (xfer->exception)
+      xfer->exception(i2cp);
+  }else{
+    i2cp->errors = errCode;
+    /* wake any master mode handling thread.*/
+    wakeup_isr(&i2cp->thread, I2C_ERROR);
+  }
+  unlockedBus(i2cp, i2cIsSlave);
+  i2cp->i2c->CR2 |= I2C_CR2_ITEVTEN;
+#else
+  i2cp->errors = errCode;
+  /* wake any master mode handling thread.*/
+  wakeup_isr(&i2cp->thread, I2C_ERROR);
+#endif
+}
+
+/**
  * @brief   I2C error handler.
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
@@ -454,10 +489,6 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
   else
     dp->CR1 |= I2C_CR1_STOP;                        /* Give up the bus      */
 
-  /* Clears interrupt flags just to be safe.*/
-  dmaStreamDisable(i2cp->dmatx);
-  dmaStreamDisable(i2cp->dmarx);
-
   if (sr & I2C_SR1_BERR)                            /* Bus error.           */
     errs |= I2CD_BUS_ERROR;
 
@@ -479,27 +510,10 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
   if (!errs)
     errs = I2CD_UNKNOWN_ERROR;
 
-#if HAL_USE_I2C_SLAVE
-  if (i2cp->mode < i2cIsMaster) {
-    i2cp->slaveErrors = errs;
-    const I2CSlaveMsg *xfer =
-      i2cp->mode == i2cSlaveReplying || i2cp->mode == i2cLockedReplying ?
-      i2cp->slaveReply : i2cp->slaveRx;
-    if (xfer->exception)
-      xfer->exception(i2cp);
-  }else{
-    i2cp->errors = errs;
-    /* wake any master mode handling thread.*/
-    wakeup_isr(&i2cp->thread, I2C_ERROR);
-  }
-  unlockedBus(i2cp, i2cIsSlave);
-  dp->CR2 |= I2C_CR2_ITEVTEN;
-#else
-  i2cp->errors = errs;
-  /* wake any master mode handling thread.*/
-  wakeup_isr(&i2cp->thread, I2C_ERROR);
-#endif
+  reportErrs(i2cp, errs);
 }
+
+
 
 /* quick and dirty queue to record event interrupts */
 #define QEVENTS 0
@@ -507,6 +521,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 uint32_t i2cQ[QEVENTS];
 unsigned i2cI = QEVENTS;
 #endif
+
 
 /**
  * @brief   I2C shared ISR code.
@@ -521,7 +536,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
   uint32_t regSR2 = dp->SR2;
   uint32_t event = dp->SR1 | (regSR2 << 16);
 
-#if QEVENTS
+#if QEVENTS > 0
   if (++i2cI >= QEVENTS)
     i2cI = 0;
   i2cQ[i2cI]=event;
@@ -529,11 +544,22 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
 
   switch (event & I2C_EV_MASK) {
 
-#if HAL_USE_I2C_SLAVE
+#if !HAL_USE_I2C_SLAVE
+#define chkTransition(expectedMode) {}
+#else
+#define chkTransition(expectedMode) { \
+   if (i2cp->mode != (expectedMode)) goto invalidTransition;}
+
+   invalidTransition:   /* error on known event out of expected sequence */
+    dp->CR1 |= I2C_CR1_STOP;        /* Give up the bus      */
+    reportErrs(i2cp, I2CD_UNKNOWN_ERROR + i2cp->mode);
+   break;
+
    case I2C_EV1_SLAVE_RXADRMATCH:
+    i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
+    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
+    chkTransition(i2cIsSlave);
     {
-      i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
-      (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       const I2CSlaveMsg *rx = i2cp->slaveNextRx;
       if (rx) {
         if (rx->adrMatched)
@@ -556,8 +582,9 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     }
     break;
    case I2C_EV2_SLAVE_RXSTOP:
+    dp->CR1 = regCR1;  /* dummy write just to clear I2C_SR1_STOPF */
+    chkTransition(i2cSlaveRxing);
     {
-      dp->CR1 = regCR1;  /* dummy write just to clear I2C_SR1_STOPF */
       const I2CSlaveMsg *rx = i2cp->slaveRx;
       size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
       if (i2cp->slaveBytes)
@@ -570,9 +597,10 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     }
     break;
    case I2C_EV1_SLAVE_TXADRMATCH:
+    i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
+    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
+    chkTransition(i2cIsSlave);
     {
-      i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
-      (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       const I2CSlaveMsg *reply = i2cp->slaveNextReply;
       if (reply) {
         if (reply->adrMatched)
@@ -598,10 +626,12 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
 
    case I2C_EV5_MASTER_MODE_SELECT:
     dp->DR = i2cp->addr;
+    chkTransition(i2cIsSlave);
     setSlaveMode(i2cp, i2cIsMaster);
     break;
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
+    chkTransition(i2cIsMaster);
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* RX DMA setup.*/
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
@@ -611,22 +641,27 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp) {
     dp->CR2 |= I2C_CR2_LAST;                 /* Needed in receiver mode. */
     if (dmaStreamGetTransactionSize(i2cp->dmarx) < 2)
       dp->CR1 &= ~I2C_CR1_ACK;
+    setSlaveMode(i2cp, i2cMasterRxing);
     break;
    case I2C_EV6_MASTER_TRA_MODE_SELECTED:
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
+    chkTransition(i2cIsMaster);
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* TX DMA setup.*/
     dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
     dmaStreamSetMemory0(i2cp->dmatx, i2cp->masterTxbuf);
     dmaStreamSetTransactionSize(i2cp->dmatx, i2cp->masterTxbytes);
     dmaStreamEnable(i2cp->dmatx);
+    setSlaveMode(i2cp, i2cMasterTxing);
     break;
    case I2C_EV8_2_MASTER_BYTE_TRANSMITTED:
+    chkTransition(i2cMasterTxing);
     /* Catches BTF event after the end of transmission.*/
     if (i2cp->masterRxbytes > 0) {
       /* Starts "read after write" operation, LSB = 1 -> receive.*/
       i2cp->addr |= 0x01;
       dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
+      setSlaveMode(i2cp, i2cIsMaster);
     }else{
       dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
       setSlaveMode(i2cp, i2cIsSlave);
@@ -678,12 +713,12 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
     dmaStreamEnable(i2cp->dmarx);
     return;
   }
-  i2cp->mode = i2cIsSlave;
 #endif
 
   dp->CR2 &= ~I2C_CR2_LAST;
   dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
   dp->CR2 |= I2C_CR2_ITEVTEN;
+  setSlaveMode(i2cp, i2cIsSlave);
   wakeup_isr(&i2cp->thread, I2C_OK);
 }
 
