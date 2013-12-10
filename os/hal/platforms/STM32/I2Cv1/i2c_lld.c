@@ -1327,8 +1327,8 @@ void i2c_lld_unmatchAll(I2CDriver *i2cp)
  **/
 void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 {
-  chDbgCheck((!rxMsg || rxMsg->body == NULL || rxMsg->size-1 < 0xffff),
-            "i2c_lld_slaveReceive");
+  chDbgCheck((!rxMsg || (rxMsg->body && rxMsg->size-1 < 0xffff)),
+             "i2c_lld_slaveReceive");
   i2cp->slaveNextRx = rxMsg;
   if (rxMsg && i2cp->mode == i2cLockedRxing) {
     if (rxMsg->adrMatched)
@@ -1364,8 +1364,8 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
  **/
 void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 {
-  chDbgCheck((!replyMsg || replyMsg->body == NULL || replyMsg->size-1 < 0xffff),
-            "i2c_lld_slaveReply");
+  chDbgCheck((!replyMsg || (replyMsg->body && replyMsg->size-1 < 0xffff)),
+             "i2c_lld_slaveReply");
   i2cp->slaveNextReply = replyMsg;
   if (replyMsg && i2cp->mode == i2cLockedReplying) {
     if (replyMsg->adrMatched)
@@ -1430,11 +1430,12 @@ msg_t  i2c_lld_slaveAwaitEvent(I2CDriver *i2cp,
                                size_t size,
                                i2caddr_t *targetAdr)
 {
-  const I2CSlaveMsg rx    = {size, inputBuffer, NULL, wakeOnRx, wakeOnError};
-  const I2CSlaveMsg reply = {0, NULL, wakeOnQuery, NULL, wakeOnError};
+  static const uint8_t dummyReplyBody;
+  const I2CSlaveMsg rx = {size, inputBuffer, NULL, wakeOnRx, wakeOnError},
+  reply = {1, (uint8_t *)&dummyReplyBody, wakeOnQuery, NULL, wakeOnError};
 #if CH_DBG_SYSTEM_STATE_CHECK
   if (i2cp->slaveThread)
-       chDbgPanic("I2CawaitEvent reentry");
+    chDbgPanic("I2CawaitEvent reentry");
 #endif
   i2c_lld_slaveReceive(i2cp, &rx);
   i2c_lld_slaveReply(i2cp, &reply);
@@ -1478,7 +1479,7 @@ msg_t i2c_lld_slaveAnswer(I2CDriver *i2cp,
     {size, (uint8_t *)replyBuffer, NULL, wakeWhenSent, wakeOnError};
 #if CH_DBG_SYSTEM_STATE_CHECK
   if (i2cp->slaveThread)
-       chDbgPanic("I2CslaveAnswer reentry");
+    chDbgPanic("I2CslaveAnswer reentry");
 #endif
   i2c_lld_slaveReply(i2cp, &answer);
   i2cp->slaveThread = chThdSelf();
