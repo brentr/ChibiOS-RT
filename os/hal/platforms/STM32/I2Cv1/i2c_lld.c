@@ -292,9 +292,11 @@ static void i2c_lld_disable(I2CDriver *i2cp) {
   I2C_TypeDef *dp = i2cp->i2c;
 
   /* reset the I2C channel, but first save addresses to match */
+#if HAL_USE_I2C_SLAVE
   uint16_t oar1 = dp->OAR1;
   uint16_t oar2 = dp->OAR2;
   uint16_t cr1 = dp->CR1;
+#endif
 
   i2c_lld_disable(i2cp);
 
@@ -302,14 +304,21 @@ static void i2c_lld_disable(I2CDriver *i2cp) {
   i2c_lld_set_clock(i2cp);
   i2c_lld_set_opmode(i2cp);
 
+#if HAL_USE_I2C_SLAVE
   /* restore address mataching */
   dp->OAR1 = oar1;
   dp->OAR2 = oar2;
+#endif
 
   /* Enable interrrupts */
   dp->CR2 |= I2C_CR2_ITERREN | I2C_CR2_DMAEN | I2C_CR2_ITEVTEN;
-  /* Ready to go.*/
-  dp->CR1 = I2C_CR1_ACK | I2C_CR1_PE | (cr1 & I2C_CR1_ENGC);
+
+  /* Finish restoring and enable pheripheral */
+  dp->CR1 = I2C_CR1_ACK | I2C_CR1_PE
+#if HAL_USE_I2C_SLAVE
+            | (cr1 & I2C_CR1_ENGC)
+#endif
+                                  ;
 }
 
 
@@ -417,9 +426,9 @@ static INLINE void unlockedBus(I2CDriver *i2cp, enum i2cSlaveMode unlockedMode)
 }
 
 #define setSlaveMode(i2cp, newMode)  {i2cp->mode=(newMode);}
-#else
+#else   /* ! HAL_USE_I2C_SLAVE */
 #define setSlaveMode(ignored, too)   {}
-#endif  /* HAL_USE_I2C_SLAVE */
+#endif
 
 /**
  * @brief   report error waking thread or invoking callback as appropriate
@@ -1113,6 +1122,11 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
   chDbgCheck((rxbytes > 1), "i2c_lld_master_receive_timeout");
 #endif
 
+#if CH_DBG_SYSTEM_STATE_CHECK
+  if (i2cp->thread)
+    chDbgPanic("I2C RX reentry");
+#endif
+
   /* Global timeout for the whole operation.*/
   chVTInit(&vt);
   if (timeout != TIME_INFINITE)
@@ -1125,11 +1139,6 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
   /* store away DMA info for later activation in event ISR */
   i2cp->masterRxbuf = rxbuf;
   i2cp->masterRxbytes = (uint16_t) rxbytes;
-
-#if CH_DBG_SYSTEM_STATE_CHECK
-  if (i2cp->thread)
-    chDbgPanic("I2C RX reentry");
-#endif
 
   /* Starts the operation.*/
   dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
@@ -1179,7 +1188,12 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   chDbgAssert(((rxbytes | txbytes) < (1<<16)),
                 "i2c_lld_master_transmit_timeout(), #1", ">64Kbytes")
 #if defined(STM32F1XX_I2C)
-  chDbgCheck((rxbytes > 1), "i2c_lld_master_transmit_timeout");
+  chDbgCheck((rxbytes != 1), "i2c_lld_master_transmit_timeout");
+#endif
+
+#if CH_DBG_SYSTEM_STATE_CHECK
+  if (i2cp->thread)
+    chDbgPanic("I2C TX reentry");
 #endif
 
   /* Global timeout for the whole operation.*/
@@ -1197,11 +1211,6 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   i2cp->masterRxbuf = rxbuf;
   i2cp->masterRxbytes = (uint16_t) rxbytes;
 
-#if CH_DBG_SYSTEM_STATE_CHECK
-  if (i2cp->thread)
-    chDbgPanic("I2C TX reentry");
-#endif
-
   /* Starts the operation.*/
   dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
   i2cp->thread = chThdSelf();
@@ -1215,8 +1224,8 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 
 /* These bits are undocumented, but used in STM32l1xx I2C example driver */
-#define I2C_OAR1_Ack_7bit     (0x4000)  /*enable 7 bit address acknowledge*/
-#define I2C_OAR1_Ack_10bit    (0xC000)  /*enable 10bit address acknowledge*/
+#define I2C_OAR1_Ack_7bit     (0x4000)  /*enable  7 bit address acknowledge*/
+#define I2C_OAR1_Ack_10bit    (0xC000)  /*enable 10 bit address acknowledge*/
 
 /**
  * @brief   Reconfigure I2C channel to respond to indicated address
