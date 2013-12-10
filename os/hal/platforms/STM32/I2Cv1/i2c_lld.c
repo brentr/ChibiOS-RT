@@ -469,7 +469,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 /* NACK of last byte transmitted in slave response is NORMAL -- not an error! */
   if (i2cp->mode == i2cSlaveReplying && (sr & I2C_SR1_AF)) {
     const I2CSlaveMsg *reply = i2cp->slaveReply;
-    size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx);
+    size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx) + 1;
     dmaStreamDisable(i2cp->dmatx);
     if (i2cp->slaveBytes)
       i2cp->slaveBytes += 0xffff - bytesRemaining;
@@ -1327,7 +1327,8 @@ void i2c_lld_unmatchAll(I2CDriver *i2cp)
  **/
 void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 {
-  chDbgCheck((rxMsg->size-1 < 0xffff), "i2c_lld_slaveReceive");
+  chDbgCheck((!rxMsg || rxMsg->body == NULL || rxMsg->size-1 < 0xffff),
+            "i2c_lld_slaveReceive");
   i2cp->slaveNextRx = rxMsg;
   if (rxMsg && i2cp->mode == i2cLockedRxing) {
     if (rxMsg->adrMatched)
@@ -1363,7 +1364,8 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
  **/
 void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 {
-  chDbgCheck((replyMsg->size-1 < 0xffff), "i2c_lld_slaveReply");
+  chDbgCheck((!replyMsg || replyMsg->body == NULL || replyMsg->size-1 < 0xffff),
+            "i2c_lld_slaveReply");
   i2cp->slaveNextReply = replyMsg;
   if (replyMsg && i2cp->mode == i2cLockedReplying) {
     if (replyMsg->adrMatched)
