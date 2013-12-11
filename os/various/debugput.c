@@ -65,7 +65,7 @@ __attribute__((noreturn))
 static msg_t debugReaderMain(void *arg)
 {
   (void) arg;
-  chThdSleepMilliseconds(100);  /*give debugger a chance to sync w/stream*/
+  chThdSleepMilliseconds(150);  /*give debugger a chance to sync w/stream*/
   while (TRUE) {
     size_t len = fetcher(&debugOutQ);
     if (len)
