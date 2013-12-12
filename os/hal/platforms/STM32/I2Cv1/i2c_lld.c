@@ -438,6 +438,7 @@ static void finishSlaveRx(I2CDriver *i2cp)
 {
   const I2CSlaveMsg *rx = i2cp->slaveRx;
   size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
+  dmaStreamDisable(i2cp->dmarx);
   if (i2cp->slaveBytes)
     i2cp->slaveBytes += 0xffff - bytesRemaining;
   else
@@ -450,13 +451,14 @@ static void finishSlaveRx(I2CDriver *i2cp)
  * @brief   finish slave transmit message processing
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] bytesRemaining  bytes lost in output queue
  *
  * @notapi
  */
-static void finishSlaveReply(I2CDriver *i2cp)
+static void finishSlaveReply(I2CDriver *i2cp, size_t bytesRemaining)
 {
   const I2CSlaveMsg *reply = i2cp->slaveReply;
-  size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx) + 1;
+  bytesRemaining += dmaStreamGetTransactionSize(i2cp->dmatx);
   dmaStreamDisable(i2cp->dmatx);
   if (i2cp->slaveBytes)
     i2cp->slaveBytes += 0xffff - bytesRemaining;
@@ -519,7 +521,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 #if HAL_USE_I2C_SLAVE
 /* NACK of last byte transmitted in slave response is NORMAL -- not an error! */
   if (i2cp->mode == i2cSlaveReplying && (sr & I2C_SR1_AF)) {
-    finishSlaveReply(i2cp);
+    finishSlaveReply(i2cp, 1);
     i2cp->mode = i2cIsSlave;
     return;
   }
@@ -634,7 +636,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
         break;
       case i2cSlaveReplying:
       case i2cLockedReplying:
-        finishSlaveReply(i2cp);  /* did not NACK last transmitted byte */
+        finishSlaveReply(i2cp, 2);  /* did not NACK last transmitted byte */
         break;
       default:
         goto invalidTransition;
