@@ -16,6 +16,8 @@
 /*
    Concepts and parts of this file have been contributed by Uladzimir Pylinsky
    aka barthess.
+
+   I2C Slave mode support added by Brent Roman (brent@mbari.org)
  */
 
 /**
@@ -84,9 +86,6 @@
 
 #define I2C_EV2_SLAVE_RXSTOP \
   (I2C_SR1_STOPF)
-
-#define I2C_EV3_2_SLAVE_TXSTOP \
-  (((uint32_t)I2C_SR2_TRA << 16) | I2C_SR1_STOPF)
 #endif
 
 #define I2C_EV_MASK (  \
@@ -526,12 +525,9 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
   }
 #endif
   i2cflags_t errs = 0;
-  I2C_TypeDef *dp = i2cp->i2c;
 
   if (sr & I2C_SR1_ARLO)                            /* Arbitration lost.    */
     errs |= I2CD_ARBITRATION_LOST;
-  else
-    dp->CR1 |= I2C_CR1_STOP;                        /* Give up the bus      */
 
   if (sr & I2C_SR1_BERR)                            /* Bus error.           */
     errs |= I2CD_BUS_ERROR;
@@ -630,11 +626,19 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     break;
 
    case I2C_EV2_SLAVE_RXSTOP:
-    dp->CR1 = regCR1;  /* dummy write just to clear I2C_SR1_STOPF */
-    if (i2cp->mode != i2cSlaveRxing &&
-        i2cp->mode != i2cLockedRxing)  /* slave can't stretch an empty msg */
-      goto invalidTransition;
-    finishSlaveRx(i2cp);
+    dp->CR1 = regCR1;            /* clear STOPF */
+    switch (i2cp->mode) {
+      case i2cSlaveRxing:
+      case i2cLockedRxing:
+        finishSlaveRx(i2cp);
+        break;
+      case i2cSlaveReplying:
+      case i2cLockedReplying:
+        finishSlaveReply(i2cp);  /* did not NACK last transmitted byte */
+        break;
+      default:
+        goto invalidTransition;
+    }
     i2cp->mode = i2cIsSlave;
     break;
 
@@ -667,28 +671,24 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
       lockedBus(i2cp, i2cLockedReplying);
     }
     break;
-
-   case I2C_EV3_2_SLAVE_TXSTOP: /* in case master does not NACK our last byte */ 
-    dp->CR1 = regCR1;  /* dummy write just to clear I2C_SR1_STOPF */
-    if (i2cp->mode != i2cSlaveReplying &&
-        i2cp->mode != i2cLockedReplying)  /* can't stretch an empty reply */
-      goto invalidTransition;
-    finishSlaveReply(i2cp);
-    i2cp->mode = i2cIsSlave;
-    break;    
 #endif  /* HAL_USE_I2C_SLAVE */
 
    case I2C_EV5_MASTER_MODE_SELECT:
     dp->DR = i2cp->addr;
     chkTransition(i2cIsSlave);
-    setSlaveMode(i2cp, i2cIsMaster);
+    if (i2cp->addr&1 && !i2cp->masterRxbytes) {
+      /* handle 0-length SMBus style quick read command */
+      dp->CR1 = regCR1 | I2C_CR1_STOP;
+      wakeup_isr(&i2cp->thread, I2C_OK);
+      while(dp->CR1 & I2C_CR1_STOP) ;  //TODO:  get rid of this busy wait!!!
+      i2c_lld_abort_operation(i2cp);   /* reset needed once stopped */
+    }else
+      setSlaveMode(i2cp, i2cIsMaster);
     break;
 
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
-    if (!i2cp->masterRxbytes)
-      goto stop;  /* for SMBusQuickRead */
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* RX DMA setup.*/
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
@@ -696,8 +696,8 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     dmaStreamSetTransactionSize(i2cp->dmarx, i2cp->masterRxbytes);
     dmaStreamEnable(i2cp->dmarx);
     dp->CR2 |= I2C_CR2_LAST;                 /* Needed in receiver mode. */
-    if (dmaStreamGetTransactionSize(i2cp->dmarx) < 2)
-      dp->CR1 &= ~I2C_CR1_ACK;
+    if (i2cp->masterRxbytes < 2)
+      dp->CR1 = regCR1 & ~I2C_CR1_ACK;
     setSlaveMode(i2cp, i2cMasterRxing);
     break;
 
@@ -719,14 +719,13 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     chkTransition(i2cMasterTxing);
     /* Catches BTF event after the end of transmission.*/
 doneWriting:
-    if (i2cp->masterRxbytes > 0) {
+    if (i2cp->masterRxbuf) {
       /* Starts "read after write" operation, LSB = 1 -> receive.*/
       i2cp->addr |= 0x01;
-      dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
+      dp->CR1 = regCR1 | I2C_CR1_START | I2C_CR1_ACK;
       setSlaveMode(i2cp, i2cIsMaster);
     }else{
-stop:
-      dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
+      dp->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
       setSlaveMode(i2cp, i2cIsSlave);
       wakeup_isr(&i2cp->thread, I2C_OK);
     }
@@ -736,8 +735,7 @@ stop:
     break;
 
    default:  /* unhandled event -- abort transaction, flag unknown err */
-    dp->CR1 = regCR1;              /* clears possible I2C_SR1_STOPF */
-    (void)dp->SR1; (void)dp->SR2;  /* clears possible I2C_SR1_ADDR */
+    i2c_lld_abort_operation(i2cp);
     i2c_lld_serve_error_interrupt(i2cp, event);
   }
 }
