@@ -84,6 +84,9 @@
 
 #define I2C_EV2_SLAVE_RXSTOP \
   (I2C_SR1_STOPF)
+
+#define I2C_EV3_2_SLAVE_TXSTOP \
+  (((uint32_t)I2C_SR2_TRA << 16) | I2C_SR1_STOPF)
 #endif
 
 #define I2C_EV_MASK (  \
@@ -444,6 +447,26 @@ static void finishSlaveRx(I2CDriver *i2cp)
     rx->processMsg(i2cp);
 }
 
+/**
+ * @brief   finish slave transmit message processing
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static void finishSlaveReply(I2CDriver *i2cp)
+{
+  const I2CSlaveMsg *reply = i2cp->slaveReply;
+  size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx) + 1;
+  dmaStreamDisable(i2cp->dmatx);
+  if (i2cp->slaveBytes)
+    i2cp->slaveBytes += 0xffff - bytesRemaining;
+  else
+    i2cp->slaveBytes = reply->size - bytesRemaining;
+  if (reply->processMsg)
+    reply->processMsg(i2cp);
+}
+
 
 #define setSlaveMode(i2cp, newMode)  {i2cp->mode=(newMode);}
 #else   /* ! HAL_USE_I2C_SLAVE */
@@ -497,15 +520,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 #if HAL_USE_I2C_SLAVE
 /* NACK of last byte transmitted in slave response is NORMAL -- not an error! */
   if (i2cp->mode == i2cSlaveReplying && (sr & I2C_SR1_AF)) {
-    const I2CSlaveMsg *reply = i2cp->slaveReply;
-    size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmatx) + 1;
-    dmaStreamDisable(i2cp->dmatx);
-    if (i2cp->slaveBytes)
-      i2cp->slaveBytes += 0xffff - bytesRemaining;
-    else
-      i2cp->slaveBytes = reply->size - bytesRemaining;
-    if (reply->processMsg)
-      reply->processMsg(i2cp);
+    finishSlaveReply(i2cp);
     i2cp->mode = i2cIsSlave;
     return;
   }
@@ -616,7 +631,9 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
 
    case I2C_EV2_SLAVE_RXSTOP:
     dp->CR1 = regCR1;  /* dummy write just to clear I2C_SR1_STOPF */
-    chkTransition(i2cSlaveRxing);
+    if (i2cp->mode != i2cSlaveRxing &&
+        i2cp->mode != i2cLockedRxing)  /* slave can't stretch an empty msg */
+      goto invalidTransition;
     finishSlaveRx(i2cp);
     i2cp->mode = i2cIsSlave;
     break;
@@ -650,6 +667,15 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
       lockedBus(i2cp, i2cLockedReplying);
     }
     break;
+
+   case I2C_EV3_2_SLAVE_TXSTOP: /* in case master does not NACK our last byte */ 
+    dp->CR1 = regCR1;  /* dummy write just to clear I2C_SR1_STOPF */
+    if (i2cp->mode != i2cSlaveReplying &&
+        i2cp->mode != i2cLockedReplying)  /* can't stretch an empty reply */
+      goto invalidTransition;
+    finishSlaveReply(i2cp);
+    i2cp->mode = i2cIsSlave;
+    break;    
 #endif  /* HAL_USE_I2C_SLAVE */
 
    case I2C_EV5_MASTER_MODE_SELECT:
@@ -661,6 +687,8 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
+    if (!i2cp->masterRxbytes)
+      goto stop;  /* for SMBusQuickRead */
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* RX DMA setup.*/
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
@@ -697,6 +725,7 @@ doneWriting:
       dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
       setSlaveMode(i2cp, i2cIsMaster);
     }else{
+stop:
       dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
       setSlaveMode(i2cp, i2cIsSlave);
       wakeup_isr(&i2cp->thread, I2C_OK);
@@ -1215,7 +1244,7 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   chDbgAssert(((rxbytes | txbytes) < (1<<16)),
                 "i2c_lld_master_transmit_timeout(), #1", ">64Kbytes")
 #if defined(STM32F1XX_I2C)
-  chDbgCheck((rxbytes != 1), "i2c_lld_master_transmit_timeout");
+  chDbgCheck((rxbytes > 1), "i2c_lld_master_transmit_timeout");
 #endif
 
 #if CH_DBG_SYSTEM_STATE_CHECK
@@ -1433,6 +1462,7 @@ static void
   wakeOnQuery(I2CDriver *i2cp)
 {
   slaveBusy(i2cp);
+  i2cp->targetAdr = i2cp->nextTargetAdr;
   wakeup_isr(&i2cp->slaveThread, I2C_QUERY);
 }
 
@@ -1445,7 +1475,7 @@ static void
 
 
 /**
- * @brief   Prepare to reply to I2C queries
+ * @brief   Await next I2C message or event
  *
  * @param[in] i2cp          pointer to the @p I2CDriver object
  * @param[out] inputBuffer  pointer to where to store received message body

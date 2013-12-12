@@ -160,7 +160,7 @@ i2cflags_t i2cGetErrors(I2CDriver *i2cp) {
  * @brief   Sends data via the I2C bus.
  * @details Function designed to realize "read-through-write" transfer
  *          paradigm. If you want transmit data without any further read,
- *          than set @b rxbytes field to 0.
+ *          set @b rxbytes AND rxbuf parameters to 0 and NULL, respectively.
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  * @param[in] addr      slave device address (7 bits) without R/W bit
@@ -191,10 +191,10 @@ msg_t i2cMasterTransmitTimeout(I2CDriver *i2cp,
                                systime_t timeout) {
   msg_t rdymsg;
 
-  chDbgCheck((i2cp != NULL) &&
-      ((txbytes == 0) || ((txbytes > 0) && (txbuf != NULL))) &&
-      ((rxbytes == 0) || ((rxbytes > 0) && (rxbuf != NULL) && (addr != 0))) &&
-      (timeout != TIME_IMMEDIATE),
+  chDbgCheck((i2cp != NULL &&
+      (txbytes == 0 || (txbytes > 0 && txbuf != NULL)) &&
+      (rxbytes == 0 || (rxbytes > 0 && rxbuf != NULL)) &&
+      (rxbuf == NULL || addr != 0) && timeout != TIME_IMMEDIATE),
       "i2cMasterTransmitTimeout");
 
   chDbgAssert(i2cp->state == I2C_READY,
@@ -238,9 +238,9 @@ msg_t i2cMasterReceiveTimeout(I2CDriver *i2cp,
 
   msg_t rdymsg;
 
-  chDbgCheck((i2cp != NULL) && (addr != 0) &&
-             (rxbytes > 0) && (rxbuf != NULL) &&
-             (timeout != TIME_IMMEDIATE),
+  chDbgCheck((i2cp != NULL && addr != 0 &&
+             (rxbytes == 0 || (rxbytes > 0 && rxbuf != NULL)) &&
+              timeout != TIME_IMMEDIATE),
              "i2cMasterReceiveTimeout");
 
   chDbgAssert(i2cp->state == I2C_READY,
