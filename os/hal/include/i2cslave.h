@@ -43,6 +43,10 @@
 
 #include <i2c.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int  i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
 /*
     Respond to messages directed to the given i2cadr.
@@ -341,6 +345,10 @@ static INLINE void
   chDbgCheck((i2cp != NULL), "i2cSlaveUnmatchAllI");
   i2c_lld_unmatchAll(i2cp);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  /* HAL_USE_I2C_SLAVE */
 
