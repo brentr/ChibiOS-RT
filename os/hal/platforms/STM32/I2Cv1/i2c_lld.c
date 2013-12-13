@@ -249,16 +249,15 @@ static void i2c_lld_set_opmode(I2CDriver *i2cp) {
 
   regCR1 = dp->CR1;
   switch (opmode) {
-  case OPMODE_I2C:
-    regCR1 &= ~(I2C_CR1_SMBUS|I2C_CR1_SMBTYPE);
-    break;
-  case OPMODE_SMBUS_DEVICE:
-    regCR1 |= I2C_CR1_SMBUS;
-    regCR1 &= ~(I2C_CR1_SMBTYPE);
-    break;
-  case OPMODE_SMBUS_HOST:
-    regCR1 |= I2C_CR1_SMBUS|I2C_CR1_SMBTYPE;
-    break;
+    case OPMODE_I2C:
+      regCR1 &= ~(I2C_CR1_SMBUS|I2C_CR1_SMBTYPE);
+      break;
+    case OPMODE_SMBUS_DEVICE:
+      regCR1 |= I2C_CR1_SMBUS;
+      regCR1 &= ~(I2C_CR1_SMBTYPE);
+      break;
+    case OPMODE_SMBUS_HOST:
+      regCR1 |= I2C_CR1_SMBUS|I2C_CR1_SMBTYPE;
   }
   dp->CR1 = regCR1;
 }
@@ -293,30 +292,26 @@ static void i2c_lld_disable(I2CDriver *i2cp) {
  void i2c_lld_abort_operation(I2CDriver *i2cp) {
   I2C_TypeDef *dp = i2cp->i2c;
 
-  /* reset the I2C channel, but first save addresses to match */
+  /* reset the I2C channel, then restore all relevant control registers */
+  uint16_t cr2 = dp->CR2, cr1 = dp->CR1;
 #if HAL_USE_I2C_SLAVE
-  uint16_t oar1 = dp->OAR1;
-  uint16_t oar2 = dp->OAR2;
-  uint16_t cr1 = dp->CR1;
+  uint16_t oar1 = dp->OAR1, oar2 = dp->OAR2;
 #endif
+  uint16_t ccr = dp->CCR, trise = dp->TRISE;
 
   i2c_lld_disable(i2cp);
 
-  /* Setup I2C parameters.*/
-  i2c_lld_set_clock(i2cp);
-  i2c_lld_set_opmode(i2cp);
-
+  dp->TRISE = trise;  dp->CCR = ccr;
 #if HAL_USE_I2C_SLAVE
   /* restore address mataching */
-  dp->OAR1 = oar1;
-  dp->OAR2 = oar2;
+  dp->OAR1 = oar1; dp->OAR2 = oar2;
 #endif
 
   /* Enable interrrupts */
-  dp->CR2 |= I2C_CR2_ITERREN | I2C_CR2_DMAEN | I2C_CR2_ITEVTEN;
+  dp->CR2 = (cr2 & 0x3F) | I2C_CR2_ITERREN | I2C_CR2_DMAEN | I2C_CR2_ITEVTEN;
 
   /* Finish restoring and enable pheripheral */
-  dp->CR1 = I2C_CR1_ACK | I2C_CR1_PE
+  dp->CR1 = I2C_CR1_ACK | I2C_CR1_PE | (cr1 & (I2C_CR1_SMBUS | I2C_CR1_SMBTYPE))
 #if HAL_USE_I2C_SLAVE
             | (cr1 & I2C_CR1_ENGC)
 #endif
@@ -347,6 +342,45 @@ static void i2c_lld_safety_timeout(void *p) {
 
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+
+#ifndef I2C_SLAVE_EVENTQ_SIZE  /* depth of event queue for threaded API */
+#define I2C_SLAVE_EVENTQ_SIZE  4
+#endif
+
+#if (I2C_SLAVE_EVENTQ_SIZE) > 0
+
+#if (I2C_SLAVE_EVENTQ_SIZE) < 3
+#error  Minimum I2C Event Queue Size is 3
+#endif
+
+/*
+   The ISR callback basic API must process events as they occur,
+   however, an event handling thread may not keep up.
+   I2C restarts and SMBus-style zero-length writes and reads
+   may require processing more than one event per interrupt.
+   These must be queued for the servicing thread, along with
+   all their associated meta-data.
+*/
+
+typedef enum {
+  i2cMessage,       /* message received from bus master */
+  i2cQuery          /* bus master is waiting for reply to query */
+}i2cEvCode;
+
+typedef struct i2cEvent {
+  i2cEvCode type;              /* event type */
+  uint8_t   errors;            /* associated error mask */
+  i2caddr_t targetAdr;         /* target i2c address */
+  size_t    bytesTransferred;  /* # of bytes actually transferred */
+} i2cEvent;
+
+static struct i2cEventQstruct {
+  uint16_t  newest, oldest;
+  i2cEvent  event[I2C_SLAVE_EVENTQ_SIZE+1];
+} i2cEventQ;
+
+#endif  /* I2C_SLAVE_EVENTQ_SIZE > 0 */
+
 /**
  * @brief   return the address matched
  *
@@ -557,10 +591,13 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 
 
 /* quick and dirty queue to record event interrupts */
-#define QEVENTS 16
-#if QEVENTS
+#define QEVENTS 0
+#if QEVENTS > 0
 uint32_t i2cQ[QEVENTS];
 unsigned i2cI = QEVENTS;
+#define qEvt(code) {if (++i2cI >= QEVENTS) i2cI = 0; i2cQ[i2cI]=(code);}
+#else
+#define qEvt(code)
 #endif
 
 
@@ -578,12 +615,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
   uint32_t regSR2 = dp->SR2;
   uint32_t event = dp->SR1 | (regSR2 << 16);
 
-#if QEVENTS > 0
-  if (++i2cI >= QEVENTS)
-    i2cI = 0;
-  i2cQ[i2cI]=event;
-#endif
-
+  qEvt(event);
   switch (event & I2C_EV_MASK) {
 
 #if !HAL_USE_I2C_SLAVE
@@ -681,16 +713,15 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     if (i2cp->addr&1 && !i2cp->masterRxbytes) {
       /* handle 0-length SMBus style quick read command */
       dp->CR1 = regCR1 | I2C_CR1_STOP;
-      wakeup_isr(&i2cp->thread, I2C_OK);
-      while(dp->CR1 & I2C_CR1_STOP) ;  //TODO:  get rid of this busy wait!!!
-      i2c_lld_abort_operation(i2cp);   /* reset needed once stopped */
-    }else
-      setSlaveMode(i2cp, i2cIsMaster);
+    }
+    setSlaveMode(i2cp, i2cIsMaster);
     break;
 
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
+    if (!i2cp->masterRxbytes)         /* 0-length SMBus style quick read */
+      goto done;
     dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* RX DMA setup.*/
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
@@ -728,12 +759,10 @@ doneWriting:
       setSlaveMode(i2cp, i2cIsMaster);
     }else{
       dp->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
+done:
       setSlaveMode(i2cp, i2cIsSlave);
       wakeup_isr(&i2cp->thread, I2C_OK);
     }
-    break;
-
-   case 0:   /* quietly ignore these occasional spurious events */
     break;
 
    default:  /* unhandled event -- abort transaction, flag unknown err */
@@ -1534,7 +1563,6 @@ static void
  * @retval I2C_ERROR    if one or more I2C errors occurred, the errors can
  *                      be retrieved using @p i2cGetErrors().
  * @retval I2C_TIMEOUT  Did not call i2cSlaveReply() in time.   The I2C bus
- *
  *                      had been locked too long and has been unlocked.
  * @notapi
  **/
