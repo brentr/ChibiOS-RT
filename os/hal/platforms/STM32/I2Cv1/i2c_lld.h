@@ -41,12 +41,11 @@
 #define I2C_CLK_FREQ  ((STM32_PCLK1) / 1000000)
 
 /**
- * @brief   Return codes from i2cSlaveAwaitEvent()
+ * @brief   Return codes
  */
 #define I2C_OK        (RDY_OK)
 #define I2C_TIMEOUT   (RDY_TIMEOUT)
 #define I2C_ERROR     (RDY_RESET)
-#define I2C_QUERY     (RDY_RESET-1)
 
 /*===========================================================================*/
 /* Driver pre-compile time settings.                                         */
@@ -400,6 +399,7 @@ struct I2CSlaveMsg {
   I2CSlaveMsgCB *processMsg;  /* invoked after message is transferred */
   I2CSlaveMsgCB *exception;   /* invoked if error or timeout during transfer */
 };
+
 #endif  /* HAL_USE_I2C_SLAVE */
 
 
@@ -503,10 +503,6 @@ struct I2CDriver {
    * @brief     Most recently matched slave address
    */
   i2caddr_t                 nextTargetAdr;
-  /**
-   * @brief   Thread waiting for Slave I/O completion.
-   */
-  Thread                    *slaveThread;
   /**
    * @brief     Error Mask for last slave message
    */
@@ -686,10 +682,6 @@ extern "C" {
   void  i2c_lld_unmatchAll(I2CDriver *i2cp);
   void  i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
   void  i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
-  msg_t i2c_lld_slaveAwaitEvent(I2CDriver *i2cp,
-          uint8_t *inputBuffer, size_t size, i2caddr_t *targetAdr);
-  msg_t i2c_lld_slaveAnswer(I2CDriver *i2cp,
-                            const uint8_t *replyBuffer, size_t size);
 #endif /* HAL_USE_I2C_SLAVE */
 
 #ifdef __cplusplus

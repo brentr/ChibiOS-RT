@@ -47,6 +47,8 @@
 extern "C" {
 #endif
 
+/*  Address matching configuration  */
+
 int  i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
 /*
     Respond to messages directed to the given i2cadr.
@@ -74,39 +76,70 @@ void  i2cUnmatchAll(I2CDriver *i2cp);
     will continue being processed.
 */
 
-
-msg_t  i2cSlaveAwaitEvent(I2CDriver *i2cp,
-           uint8_t *inputBuffer, size_t size, i2caddr_t *targetAdr);
+static INLINE msg_t
+  i2cMatchAddressI(I2CDriver *i2cp, i2caddr_t  i2cadr)
 /*
-  Waits for a received message, query, error, or timeout.
-  Incoming messages are received into inputBuffer,
-  If non-NULL, *targetAdr is assigned the target address.
-
-  If returned value is >=0, it is the number of bytes received
-  otherwise, the return value:
-    I2C_QUERY indicates master is awaiting a response from this slave and that
-    one must call i2cSlaveAnswer() before next calling i2cSlaveAwaitMessage()
-
-    I2C_ERROR indicates an error occured
-    details can be retrieved via i2cGetErrors()
-
-    I2C_TIMEOUT implies slave locked the bus too long and it has been unlocked.
+  Notes:
+      Must be called from interrupt context
+      Does not affect the processing of any message currently being received
 */
+{
+  chDbgCheck((i2cp != NULL), "i2cSlaveMatchAddressI");
+  return i2c_lld_matchAddress(i2cp, i2cadr);
+}
 
-msg_t  i2cSlaveAnswer(I2CDriver *i2cp,
-                      const uint8_t *replyBuffer, size_t size);
+static INLINE void
+  i2cUnmatchAddressI(I2CDriver *i2cp, i2caddr_t  i2cadr)
 /*
-  Blocks until replyBuffer is sent back to the requesting master.
-  Invoke directly after i2cSlaveAwaitEvent() returns I2C_QUERY.
-
-  If returned value is >=0, it is the number of bytes transmitted
-  otherwise, the return value:
-    I2C_ERROR indicates that an error occured
-    details can be retrieved via i2cGetErrors()
-
-    I2C_TIMEOUT implies slave locked the bus too long and it has been unlocked.
+  Notes:
+      Must be called from interrupt context
+      Does not affect the processing of any message currently being received
 */
+{
+  chDbgCheck((i2cp != NULL), "i2cSlaveUnmatchAddressI");
+  i2c_lld_unmatchAddress(i2cp, i2cadr);
+}
 
+static INLINE void
+  i2cUnmatchAllI(I2CDriver *i2cp)
+/*
+  Notes:
+      Must be called from interrupt context
+      Does not affect the processing of any message currently being received
+*/
+{
+  chDbgCheck((i2cp != NULL), "i2cSlaveUnmatchAllI");
+  i2c_lld_unmatchAll(i2cp);
+}
+
+
+/*  I2C Bus activity timeout configuration  */
+
+static INLINE
+  systime_t i2cSlaveTimeout(I2CDriver *i2cp)
+/*
+  returns the maximum number of system ticks a slave bus transaction may last
+  initialized to TIME_INFINITE (disabling slave mode bus timeouts)
+*/
+{
+  chDbgCheck((i2cp != NULL), "i2cSlaveTimeout");
+  return i2c_lld_get_slaveTimeout(i2cp);
+}
+
+static INLINE
+  void i2cSlaveSetTimeout(I2CDriver *i2cp, systime_t ticks)
+/*
+  set the maximum number of system ticks a slave bus transaction may last
+  TIME_IMMEDIATE is invald
+  TIME_INFINITE is disables slave mode bus timeouts
+*/
+{
+  chDbgCheck((i2cp != NULL && ticks != TIME_IMMEDIATE), "i2cSlaveSetTimeout");
+  i2c_lld_set_slaveTimeout(i2cp, ticks);
+}
+
+
+/* bus transaction attributes */
 
 static INLINE
   i2cflags_t i2cSlaveErrors(I2CDriver *i2cp)
@@ -119,38 +152,38 @@ static INLINE
 }
 
 static INLINE
-  systime_t i2cSlaveTimeout(I2CDriver *i2cp)
+  size_t i2cSlaveBytes(I2CDriver *i2cp)
 /*
-  returns the maximum number of ticks slave may stretch the I2C clock
-  initialized to TIME_INFINITE (disabling slave mode bus lock timeouts)
+  length of most recently received slave message
 */
 {
-  chDbgCheck((i2cp != NULL), "i2cSlaveTimeout");
-  return i2c_lld_get_slaveTimeout(i2cp);
+  chDbgCheck((i2cp != NULL), "i2cSlaveBytes");
+  return i2c_lld_get_slaveBytes(i2cp);
 }
 
 static INLINE
-  void i2cSlaveSetTimeout(I2CDriver *i2cp, systime_t ticks)
+  i2caddr_t i2cSlaveTargetAdr(I2CDriver *i2cp)
 /*
-  set the maximum number of ticks slave may stretch the I2C clock
-  TIME_IMMEDIATE is invald
-  TIME_INFINITE is disables slave mode bus lock timeouts
+  target address of slave message being or last processed
 */
 {
-  chDbgCheck((i2cp != NULL && ticks != TIME_IMMEDIATE), "i2cSlaveSetTimeout");
-  i2c_lld_set_slaveTimeout(i2cp, ticks);
+  chDbgCheck((i2cp != NULL), "i2cSlaveTargetAdr");
+  return i2c_lld_get_slaveTargetAdr(i2cp);
+}
+
+static INLINE
+  i2caddr_t i2cSlaveMatchedAdr(I2CDriver *i2cp)
+/*
+  target address of slave message just matched
+*/
+{
+  chDbgCheck((i2cp != NULL), "i2cSlaveMatchedAdr");
+  return i2c_lld_get_slaveMatchedAdr(i2cp);
 }
 
 
-
 /*
-  Advanced Usage with Asynchronous Callback functions:
-
-  Asynchronous callback functions that are used internally to implement
-  i2cSlaveAwaitMessage() and i2cSlaveAnswer() above are described below:
-
-  i2cSlaveAwaitMessage() and i2cSlaveAnswer() will conflict with the
-  functions defined below.
+  Asynchronous callback functions are described below:
 
   Each callback function may alter the processing of subsequent I2C
   messages and read requests by calling i2cSlaveReceive() and
@@ -171,17 +204,6 @@ static INLINE
 
   All Receive and Reply are initially Locked.
 */
-
-static INLINE
-  size_t i2cSlaveBytes(I2CDriver *i2cp)
-/*
-  length of most recently received slave message
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveBytes");
-  return i2c_lld_get_slaveBytes(i2cp);
-}
-
 
 void i2cSlaveConfigure(I2CDriver *i2cp,
                    const I2CSlaveMsg *rxMsg, const I2CSlaveMsg *replyMsg);
@@ -258,27 +280,6 @@ static INLINE
   return i2c_lld_lock_slaveReply(i2cp);
 }
 
-static INLINE
-  i2caddr_t i2cSlaveTargetAdr(I2CDriver *i2cp)
-/*
-  target address of slave message being or last processed
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveTargetAdr");
-  return i2c_lld_get_slaveTargetAdr(i2cp);
-}
-
-static INLINE
-  i2caddr_t i2cSlaveMatchedAdr(I2CDriver *i2cp)
-/*
-  target address of slave message just matched
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveMatchedAdr");
-  return i2c_lld_get_slaveMatchedAdr(i2cp);
-}
-
-
 static INLINE void
   i2cSlaveReceiveI(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 /*
@@ -307,43 +308,6 @@ static INLINE void
 {
    chDbgCheck((i2cp != NULL), "i2cSlaveReplyI");
    i2c_lld_slaveReply(i2cp, replyMsg);
-}
-
-
-static INLINE msg_t
-  i2cMatchAddressI(I2CDriver *i2cp, i2caddr_t  i2cadr)
-/*
-  Notes:
-      Must be called from interrupt context
-      Does not affect the processing of any message currently being received
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveMatchAddressI");
-  return i2c_lld_matchAddress(i2cp, i2cadr);
-}
-
-static INLINE void
-  i2cUnmatchAddressI(I2CDriver *i2cp, i2caddr_t  i2cadr)
-/*
-  Notes:
-      Must be called from interrupt context
-      Does not affect the processing of any message currently being received
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveUnmatchAddressI");
-  i2c_lld_unmatchAddress(i2cp, i2cadr);
-}
-
-static INLINE void
-  i2cUnmatchAllI(I2CDriver *i2cp)
-/*
-  Notes:
-      Must be called from interrupt context
-      Does not affect the processing of any message currently being received
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveUnmatchAllI");
-  i2c_lld_unmatchAll(i2cp);
 }
 
 #ifdef __cplusplus
