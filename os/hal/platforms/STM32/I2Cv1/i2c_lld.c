@@ -398,7 +398,7 @@ static INLINE void slaveBusy(I2CDriver *i2cp)
 
 
 /**
- * @brief   Enter specified slave locked mode and start associated timer
+ * @brief   Enter specified slave locked mode
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  *
@@ -498,8 +498,7 @@ void reportErrs(I2CDriver *i2cp, i2cflags_t errCode)
     /* wake any master mode handling thread.*/
     wakeup_isr(i2cp, I2C_ERROR);
   }
-  unlockedBus(i2cp, i2cIsSlave);
-  i2cp->i2c->CR2 |= I2C_CR2_ITEVTEN;
+  i2cp->mode = i2cIsSlave;
 #else
   i2cp->errors = errCode;
   /* wake any master mode handling thread.*/
@@ -619,7 +618,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
           break;
         }
       }
-      lockedBus(i2cp, i2cLockedRxing);
+      i2cp->mode = i2cLockedRxing;
     }
     break;
 
@@ -666,7 +665,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
           break;
         }
       }
-      lockedBus(i2cp, i2cLockedReplying);
+      i2cp->mode = i2cLockedReplying;
     }
     break;
 #endif  /* HAL_USE_I2C_SLAVE */
@@ -686,7 +685,6 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     chkTransition(i2cIsMaster);
     if (!i2cp->masterRxbytes)         /* 0-length SMBus style quick read */
       goto done;
-    dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* RX DMA setup.*/
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
     dmaStreamSetMemory0(i2cp->dmarx, i2cp->masterRxbuf);
@@ -703,7 +701,6 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     chkTransition(i2cIsMaster);
     if (!i2cp->masterTxbytes)
       goto doneWriting;
-    dp->CR2 &= ~I2C_CR2_ITEVTEN;
     /* TX DMA setup.*/
     dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
     dmaStreamSetMemory0(i2cp->dmatx, i2cp->masterTxbuf);
@@ -775,7 +772,6 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
 
   dp->CR2 &= ~I2C_CR2_LAST;
   dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
-  dp->CR2 |= I2C_CR2_ITEVTEN;
   setSlaveMode(i2cp, i2cIsSlave);
   wakeup_isr(i2cp, I2C_OK);
 }
@@ -788,8 +784,6 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
  * @notapi
  */
 static void i2c_lld_serve_tx_end_irq(I2CDriver *i2cp, uint32_t flags) {
-  I2C_TypeDef *dp = i2cp->i2c;
-
   /* DMA errors handling.*/
 #if defined(STM32_I2C_DMA_ERROR_HOOK)
   if ((flags & (STM32_DMA_ISR_TEIF | STM32_DMA_ISR_DMEIF)) != 0) {
@@ -812,14 +806,8 @@ static void i2c_lld_serve_tx_end_irq(I2CDriver *i2cp, uint32_t flags) {
     dmaStreamSetMemory0(i2cp->dmatx, reply->body+reply->size-1);
     dmaStreamSetTransactionSize(i2cp->dmatx, 0xffff);
     dmaStreamEnable(i2cp->dmatx);
-    return;
   }
 #endif
-
-  /* Enables interrupts to catch BTF event meaning transmission part complete.
-     Interrupt handler will decide to generate STOP or to begin receiving part
-     of R/W transaction itself.*/
-  dp->CR2 |= I2C_CR2_ITEVTEN;
 }
 
 /*===========================================================================*/
@@ -1400,7 +1388,7 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
       i2cp->targetAdr = i2cp->nextTargetAdr;
       i2cp->slaveBytes = 0;
       i2cp->slaveErrors = 0;
-      unlockedBus(i2cp, i2cSlaveRxing);
+      i2cp->mode = i2cSlaveRxing;
     }
   }
 }
@@ -1437,7 +1425,7 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
       i2cp->targetAdr = i2cp->nextTargetAdr;
       i2cp->slaveBytes = 0;
       i2cp->slaveErrors = 0;
-      unlockedBus(i2cp, i2cSlaveReplying);
+      i2cp->mode = i2cSlaveReplying;
     }
   }
 }
