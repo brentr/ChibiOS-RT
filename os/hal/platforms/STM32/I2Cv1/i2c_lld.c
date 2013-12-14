@@ -123,6 +123,129 @@ I2CDriver I2CD3;
 /* Driver local functions.                                                   */
 /*===========================================================================*/
 
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+
+static void i2c_lld_abort_operation(I2CDriver *i2cp);
+
+/**
+ * @brief   return the address matched
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] sr2       I2C SR2 register contents
+ *
+ * @notapi
+ *   Only supports 7-bit addressing for now
+ */
+static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
+  if (sr2 & I2C_SR2_GENCALL)
+    return 0;
+  if (sr2 & I2C_SR2_DUALF)
+    return (dp->OAR2>>1) & 0x7f;
+  return (dp->OAR1>>1) & 0x7f;
+}
+
+
+/**
+ * @brief   Handling of stalled slave mode I2C transactions.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static void timeExpired(void *i2cv) {
+  I2CDriver *i2cp = (I2CDriver *)i2cv;
+
+  chSysLockFromIsr();
+  i2c_lld_abort_operation(i2cp);
+  const I2CSlaveMsg *xfer = i2cp->mode == i2cLockedReplying ?
+                                           i2cp->slaveReply : i2cp->slaveRx;
+  if (xfer->exception)
+    xfer->exception(i2cp);  /* in this case, i2cp->slaveErrors == 0 */
+  i2cp->mode = i2cIsSlave;
+  chSysUnlockFromIsr();
+}
+
+
+/**
+ * @brief   stop slave mode timeout countdown
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static INLINE void stopTimeout(I2CDriver *i2cp)
+{
+  if (chVTIsArmedI(&i2cp->slaveTimer))
+    chVTResetI(&i2cp->slaveTimer);
+}
+
+/**
+ * @brief   start or restart slave mode timeout countdown
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static INLINE void startTimeout(I2CDriver *i2cp)
+{
+  stopTimeout(i2cp);
+  if (i2cp->slaveTimeout != TIME_INFINITE)
+    chVTSetI(&i2cp->slaveTimer, i2cp->slaveTimeout, timeExpired, i2cp);
+}
+
+/**
+ * @brief   finish slave receive message processing
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static void finishSlaveRx(I2CDriver *i2cp)
+{
+  const I2CSlaveMsg *rx = i2cp->slaveRx;
+  size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
+  dmaStreamDisable(i2cp->dmarx);
+  stopTimeout(i2cp);
+  if (i2cp->slaveBytes)
+    i2cp->slaveBytes += 0xffff - bytesRemaining;
+  else
+    i2cp->slaveBytes = rx->size - bytesRemaining;
+  if (rx->processMsg)
+    rx->processMsg(i2cp);
+  i2cp->targetAdr = i2cInvalidAdr;
+}
+
+/**
+ * @brief   finish slave transmit message processing
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] bytesRemaining  bytes lost in output queue
+ *
+ * @notapi
+ */
+static void finishSlaveReply(I2CDriver *i2cp, size_t bytesRemaining)
+{
+  const I2CSlaveMsg *reply = i2cp->slaveReply;
+  bytesRemaining += dmaStreamGetTransactionSize(i2cp->dmatx);
+  dmaStreamDisable(i2cp->dmatx);
+  stopTimeout(i2cp);
+  if (i2cp->slaveBytes)
+    i2cp->slaveBytes += 0xffff - bytesRemaining;
+  else
+    i2cp->slaveBytes = reply->size - bytesRemaining;
+  if (reply->processMsg)
+    reply->processMsg(i2cp);
+  i2cp->targetAdr = i2cInvalidAdr;
+}
+
+
+#define setSlaveMode(i2cp, newMode)  {i2cp->mode=(newMode);}
+#else   /* ! HAL_USE_I2C_SLAVE */
+#define setSlaveMode(ignored, too)   {}
+#define stopTimeout(ignored)  {}
+#endif
+
+
 /**
  * @brief   Wakes up a waiting thread.
  *
@@ -274,6 +397,7 @@ static void i2c_lld_disable(I2CDriver *i2cp) {
   I2C_TypeDef *dp = i2cp->i2c;
   /* reset the I2C registers.*/
   dp->CR1 = I2C_CR1_SWRST;
+  stopTimeout(i2cp);
   dp->CR1 = 0;
 
   /* Stop the associated DMA streams.*/
@@ -289,7 +413,7 @@ static void i2c_lld_disable(I2CDriver *i2cp) {
  *
  * @notapi
  */
- void i2c_lld_abort_operation(I2CDriver *i2cp) {
+static void i2c_lld_abort_operation(I2CDriver *i2cp) {
   I2C_TypeDef *dp = i2cp->i2c;
 
   /* save control registers */
@@ -315,7 +439,8 @@ static void i2c_lld_disable(I2CDriver *i2cp) {
   /* Finish restoring and enable pheripheral */
   dp->CR1 = I2C_CR1_ACK | I2C_CR1_PE | (cr1 & (I2C_CR1_SMBUS | I2C_CR1_SMBTYPE))
 #if HAL_USE_I2C_SLAVE
-            | (cr1 & I2C_CR1_ENGC)
+            | (cr1 & I2C_CR1_ENGC);
+  i2cp->targetAdr = i2cInvalidAdr
 #endif
                                   ;
 }
@@ -343,135 +468,6 @@ static void i2c_lld_safety_timeout(void *p) {
 }
 
 
-#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
-
-/**
- * @brief   return the address matched
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- * @param[in] sr2       I2C SR2 register contents
- *
- * @notapi
- *   Only supports 7-bit addressing for now
- */
-static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
-  if (sr2 & I2C_SR2_GENCALL)
-    return 0;
-  if (sr2 & I2C_SR2_DUALF)
-    return (dp->OAR2>>1) & 0x7f;
-  return (dp->OAR1>>1) & 0x7f;
-}
-
-
-/**
- * @brief   Handling of stalled slave mode I2C transactions.
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static void lockExpired(void *i2cv) {
-  I2CDriver *i2cp = (I2CDriver *)i2cv;
-
-  chSysLockFromIsr();
-  i2c_lld_abort_operation(i2cp);
-  const I2CSlaveMsg *xfer = i2cp->mode == i2cLockedReplying ?
-                                           i2cp->slaveReply : i2cp->slaveRx;
-  if (xfer->exception)
-    xfer->exception(i2cp);  /* in this case, i2cp->slaveErrors == 0 */
-  i2cp->mode = i2cIsSlave;
-  chSysUnlockFromIsr();
-}
-
-
-/**
- * @brief   Stretches I2C clock (locking bus) on next transfer
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static INLINE void slaveBusy(I2CDriver *i2cp)
-{
-  i2cp->slaveNextReply = i2cp->slaveNextRx = NULL;
-}
-
-
-/**
- * @brief   Enter specified slave locked mode
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static INLINE void lockedBus(I2CDriver *i2cp, enum i2cSlaveMode lockedMode)
-{
-  i2cp->mode = lockedMode;
-  if (i2cp->slaveTimeout != TIME_INFINITE)
-    chVTSetI(&i2cp->slaveTimer, i2cp->slaveTimeout, lockExpired, i2cp);
-}
-
-/**
- * @brief   Exit slave locking mode and stop associated timer
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static INLINE void unlockedBus(I2CDriver *i2cp, enum i2cSlaveMode unlockedMode)
-{
-  i2cp->mode = unlockedMode;
-  if (chVTIsArmedI(&i2cp->slaveTimer))
-    chVTResetI(&i2cp->slaveTimer);
-}
-
-/**
- * @brief   finish slave receive message processing
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static void finishSlaveRx(I2CDriver *i2cp)
-{
-  const I2CSlaveMsg *rx = i2cp->slaveRx;
-  size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
-  dmaStreamDisable(i2cp->dmarx);
-  if (i2cp->slaveBytes)
-    i2cp->slaveBytes += 0xffff - bytesRemaining;
-  else
-    i2cp->slaveBytes = rx->size - bytesRemaining;
-  if (rx->processMsg)
-    rx->processMsg(i2cp);
-}
-
-/**
- * @brief   finish slave transmit message processing
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- * @param[in] bytesRemaining  bytes lost in output queue
- *
- * @notapi
- */
-static void finishSlaveReply(I2CDriver *i2cp, size_t bytesRemaining)
-{
-  const I2CSlaveMsg *reply = i2cp->slaveReply;
-  bytesRemaining += dmaStreamGetTransactionSize(i2cp->dmatx);
-  dmaStreamDisable(i2cp->dmatx);
-  if (i2cp->slaveBytes)
-    i2cp->slaveBytes += 0xffff - bytesRemaining;
-  else
-    i2cp->slaveBytes = reply->size - bytesRemaining;
-  if (reply->processMsg)
-    reply->processMsg(i2cp);
-}
-
-
-#define setSlaveMode(i2cp, newMode)  {i2cp->mode=(newMode);}
-#else   /* ! HAL_USE_I2C_SLAVE */
-#define setSlaveMode(ignored, too)   {}
-#endif
-
 /**
  * @brief   report error waking thread or invoking callback as appropriate
  *
@@ -491,8 +487,9 @@ void reportErrs(I2CDriver *i2cp, i2cflags_t errCode)
     const I2CSlaveMsg *xfer =
       i2cp->mode == i2cSlaveReplying || i2cp->mode == i2cLockedReplying ?
       i2cp->slaveReply : i2cp->slaveRx;
-    if (xfer->exception)
+    if (xfer && xfer->exception)
       xfer->exception(i2cp);
+    i2cp->targetAdr = i2cInvalidAdr;
   }else{
     i2cp->errors = errCode;
     /* wake any master mode handling thread.*/
@@ -522,6 +519,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
     i2cp->mode = i2cIsSlave;
     return;
   }
+  stopTimeout(i2cp);
 #endif
   i2cflags_t errs = 0;
 
@@ -599,6 +597,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
       finishSlaveRx(i2cp);  /* in case of repeated start */
     else
       chkTransition(i2cIsSlave);
+    startTimeout(i2cp);
     {
       const I2CSlaveMsg *rx = i2cp->slaveNextRx;
       if (rx) {
@@ -646,6 +645,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
       finishSlaveRx(i2cp);  /* in case of repeated start */
     else
       chkTransition(i2cIsSlave);
+    startTimeout(i2cp);
     {
       const I2CSlaveMsg *reply = i2cp->slaveNextReply;
       if (reply) {
@@ -1063,7 +1063,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
     i2cp->slaveRx = i2cp->slaveNextRx =
     i2cp->slaveReply = i2cp->slaveNextReply = NULL;
     i2cp->mode = i2cIsSlave;
-    i2cp->targetAdr = i2cp->nextTargetAdr = 0;
+    i2cp->targetAdr = i2cp->nextTargetAdr = i2cInvalidAdr;
     i2cp->slaveTimeout = TIME_INFINITE;
 #endif
 

@@ -47,6 +47,12 @@
 #define I2C_TIMEOUT   (RDY_TIMEOUT)
 #define I2C_ERROR     (RDY_RESET)
 
+/**
+ * @brief   Invalid I2C bus address
+ */
+#define i2cInvalidAdr  ((i2caddr_t) -1)
+
+
 /*===========================================================================*/
 /* Driver pre-compile time settings.                                         */
 /*===========================================================================*/
@@ -569,6 +575,7 @@ struct I2CDriver {
  * @notapi
  */
 #define i2c_lld_get_slaveBytes(i2cp) ((i2cp)->slaveBytes)
+
 
 /**
  * @brief   Get slave timeout in ticks from I2C driver.
