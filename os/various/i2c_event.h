@@ -122,8 +122,8 @@ static void queueCurrentEvent(
   if (newest >= i2cq->depth)
     newest = 0;
   /*
-  if (newest != body->oldest) {
-    i2cEventQ *next = body.event + newest;
+  if (newest != body->oldest) {  /* not full */
+    i2cEventQ *next = body->event + newest;
     next->type = type;
     next->targetAdr = targetAdr;
     next->flags = i2c_lld_get_slaveErrors(i2cp);
