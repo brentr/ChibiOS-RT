@@ -399,12 +399,21 @@ typedef void
 */
 
 struct I2CSlaveMsg {
-  size_t     size;     /* sizeof(body) */
-  uint8_t   *body;     /* message contents */
+  size_t     size;     /* sizeof(body) -- zero if master must wait */
+  uint8_t   *body;     /* message contents -- or NULL if master must wait */
   I2CSlaveMsgCB *adrMatched;  /* invoked when slave address matches */
   I2CSlaveMsgCB *processMsg;  /* invoked after message is transferred */
   I2CSlaveMsgCB *exception;   /* invoked if error or timeout during transfer */
 };
+
+
+I2CSlaveMsgCB I2CSlaveDummyCB;
+/*
+  dummy callback -- placeholder to ignore event
+*/
+
+  /* lock bus on receive or reply -- force master to wait */
+extern const I2CSlaveMsg I2CSlaveLockOnMsg;
 
 #endif  /* HAL_USE_I2C_SLAVE */
 
@@ -492,8 +501,8 @@ struct I2CDriver {
   enum i2cSlaveMode {
     i2cIsSlave=1,       /* awaiting address */
     i2cSlaveRxing,      /* receiving message */
-    i2cSlaveReplying,   /* replying to query */
     i2cLockedRxing,     /* stretching clock while receiving message */
+    i2cSlaveReplying,   /* replying to query */
     i2cLockedReplying,  /* stretching clock while replying to query */
 
     i2cIsMaster=0x11,   /* sent start bit (mastering bus) */
@@ -630,24 +639,6 @@ struct I2CDriver {
  * @notapi
  */
 #define i2c_lld_get_slaveReply(i2cp) ((i2cp)->slaveNextReply)
-
-/**
- * @brief   Lock this I2C bus on next received message.
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-#define i2c_lld_lock_slaveReceive(i2cp) ((i2cp)->slaveNextRx=NULL)
-
-/**
- * @brief   Lock this I2C bus on next query from master.
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-#define i2c_lld_lock_slaveReply(i2cp) ((i2cp)->slaveNextReply=NULL)
 
 #endif
 

@@ -115,6 +115,20 @@ I2CDriver I2CD2;
 I2CDriver I2CD3;
 #endif
 
+
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+
+void I2CSlaveDummyCB(I2CDriver *i2cp)
+/*
+  dummy callback -- placeholder to ignore event
+*/
+{(void)i2cp;}
+
+  /* lock bus on receive or reply message */
+const I2CSlaveMsg I2CSlaveLockOnMsg = {
+  0, NULL, I2CSlaveDummyCB, I2CSlaveDummyCB, I2CSlaveDummyCB
+};
+
 /*===========================================================================*/
 /* Driver local variables and types.                                         */
 /*===========================================================================*/
@@ -122,8 +136,6 @@ I2CDriver I2CD3;
 /*===========================================================================*/
 /* Driver local functions.                                                   */
 /*===========================================================================*/
-
-#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 
 static void i2c_lld_abort_operation(I2CDriver *i2cp);
 
@@ -157,8 +169,8 @@ static void timeExpired(void *i2cv) {
 
   chSysLockFromIsr();
   i2c_lld_abort_operation(i2cp);
-  const I2CSlaveMsg *xfer = i2cp->mode == i2cLockedReplying ?
-                                           i2cp->slaveReply : i2cp->slaveRx;
+  const I2CSlaveMsg *xfer = i2cp->mode >= i2cSlaveReplying ?
+                                          i2cp->slaveReply : i2cp->slaveRx;
   if (xfer->exception)
     xfer->exception(i2cp);  /* in this case, i2cp->slaveErrors == 0 */
   i2cp->mode = i2cIsSlave;
@@ -485,9 +497,8 @@ void reportErrs(I2CDriver *i2cp, i2cflags_t errCode)
   if (i2cp->mode < i2cIsMaster) {
     i2cp->slaveErrors = errCode;
     const I2CSlaveMsg *xfer =
-      i2cp->mode == i2cSlaveReplying || i2cp->mode == i2cLockedReplying ?
-      i2cp->slaveReply : i2cp->slaveRx;
-    if (xfer && xfer->exception)
+      i2cp->mode >= i2cSlaveReplying ? i2cp->slaveReply : i2cp->slaveRx;
+    if (xfer->exception)
       xfer->exception(i2cp);
     i2cp->targetAdr = i2cInvalidAdr;
   }else{
@@ -600,11 +611,11 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     startTimeout(i2cp);
     {
       const I2CSlaveMsg *rx = i2cp->slaveNextRx;
-      if (rx) {
+      if (rx->body && rx->size) {
         if (rx->adrMatched)
           rx->adrMatched(i2cp);
         rx = i2cp->slaveRx = i2cp->slaveNextRx;
-        if (rx) {
+        if (rx->body && rx->size) {
            /* slave RX DMA setup.*/
           dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
           dmaStreamSetMemory0(i2cp->dmarx, rx->body);
@@ -1060,8 +1071,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
     dmaStreamSetPeripheral(i2cp->dmatx, &dp->DR);
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
-    i2cp->slaveRx = i2cp->slaveNextRx =
-    i2cp->slaveReply = i2cp->slaveNextReply = NULL;
+    i2cp->slaveNextReply = i2cp->slaveNextRx = &I2CSlaveLockOnMsg;
     i2cp->mode = i2cIsSlave;
     i2cp->targetAdr = i2cp->nextTargetAdr = i2cInvalidAdr;
     i2cp->slaveTimeout = TIME_INFINITE;
@@ -1372,14 +1382,13 @@ void i2c_lld_unmatchAll(I2CDriver *i2cp)
  **/
 void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 {
-  chDbgCheck((!rxMsg || (rxMsg->body && rxMsg->size-1 < 0xffff)),
-             "i2c_lld_slaveReceive");
+  chDbgCheck((rxMsg && rxMsg->size <= 0xffff), "i2c_lld_slaveReceive");
   i2cp->slaveNextRx = rxMsg;
-  if (rxMsg && i2cp->mode == i2cLockedRxing) {
+  if (i2cp->mode == i2cLockedRxing && rxMsg->body && rxMsg->size) {
     if (rxMsg->adrMatched)
         rxMsg->adrMatched(i2cp);
     rxMsg = i2cp->slaveRx = i2cp->slaveNextRx;
-    if (rxMsg) {
+    if (rxMsg->body && rxMsg->size) {
       /* slave RX DMA setup -- we can receive now! */
       dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
       dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
@@ -1409,14 +1418,13 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
  **/
 void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 {
-  chDbgCheck((!replyMsg || (replyMsg->body && replyMsg->size-1 < 0xffff)),
-             "i2c_lld_slaveReply");
+  chDbgCheck((replyMsg && replyMsg->size <= 0xffff), "i2c_lld_slaveReply");
   i2cp->slaveNextReply = replyMsg;
-  if (replyMsg && i2cp->mode == i2cLockedReplying) {
+  if (i2cp->mode == i2cLockedReplying && replyMsg->body && replyMsg->size) {
     if (replyMsg->adrMatched)
         replyMsg->adrMatched(i2cp);
     replyMsg = i2cp->slaveReply = i2cp->slaveNextReply;
-    if (replyMsg) {
+    if (replyMsg->body && replyMsg->size) {
       /* slave TX DMA setup -- we can reply now! */
       dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
       dmaStreamSetMemory0(i2cp->dmatx, replyMsg->body);

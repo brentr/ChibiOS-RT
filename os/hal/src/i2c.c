@@ -334,7 +334,7 @@ void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
       Does not affect the processing of any message currently being received
 */
 {
-  chDbgCheck((i2cp != NULL), "i2cSlaveReceive");
+  chDbgCheck((i2cp != NULL && rxMsg != NULL), "i2cSlaveReceive");
   chSysLock();
   i2c_lld_slaveReceive(i2cp, rxMsg);
   chSysUnlock();
@@ -349,7 +349,7 @@ void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
       Does not affect the processing of any message reply being sent
 */
 {
-  chDbgCheck((i2cp != NULL), "i2cSlaveReply");
+  chDbgCheck((i2cp != NULL && replyMsg != NULL), "i2cSlaveReply");
   chSysLock();
   i2c_lld_slaveReply(i2cp, replyMsg);
   chSysUnlock();

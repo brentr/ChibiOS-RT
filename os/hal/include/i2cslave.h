@@ -187,22 +187,30 @@ static INLINE
 
   Each callback function may alter the processing of subsequent I2C
   messages and read requests by calling i2cSlaveReceive() and
-  i2cSlaveReply(), respectively.
-
-  If an I2CSlaveMsg struct is in RAM, these callbacks may alter them.
+  i2cSlaveReply(), respectively.  Further, callbacks may alter their
+  i2cSlaveMsg structs in RAM, but only those for there own channel.
   Such changes take immediate affect.  This facility can be used to
   avoid copying message buffers.
 
   If receive buffers become full or a reply to a read request cannot be
-  immediately generated, an I2CSlaveMsg pointer may be set to NULL, via
-  i2cSlaveLockOnReceive() or i2cSlaveLockOnReply(), as appropriate.
-  This signals the master node to wait by holding the I2C clock signal
-  low -- stretching the I2C clock -- on the next transaction to which
-  that I2CSlaveMsg applies.
-  The I2C bus is unlocked only after a i2cSlaveSetReceive() or SetReply() is
-  called with a non-NULL I2CSlaveMsg pointer.
+  generated immediately, the relevant I2CSlaveMsg struct may be substituted
+  for another whose body pointer is NULL or whose body size is zero.  
+  Note that, I2CSlaveMsg structs may be modified
+  in place within a channel's callbacks to the same effect.
+ 
+  A NULL body pointer or zero size causes the slave to signal the master node
+  to wait by holding the I2C clock signal low, "stretching it", during the next
+  transaction to which that I2CSlaveMsg applies.
+  The I2C clock resumes only after a i2cSlaveSetReceive() or SetReply() is
+  called with an I2CSlaveMsg containing a non-NULL body,
+  or after the transaction timeout expires.
+  
+  Therefore, if a NULL body pointer is replaced with a non-NULL one or
+  a zero length is replaced with a non-zero one, i2cSlaveReceive() or
+  i2cSlaveReply() MUST be called (even with the same values as last time)
+  to inform the i2c driver that the transaction may resume.
 
-  All Receive and Reply are initially Locked.
+  Note that Receive and Reply processing is initially "locked".
 */
 
 void i2cSlaveConfigure(I2CDriver *i2cp,
@@ -212,9 +220,10 @@ void i2cSlaveConfigure(I2CDriver *i2cp,
 
   Notes:
       Must be called from a thread
-      One must subsequently call i2cMatchAddress() to enable slave processing
+      Subsequently call i2cMatchAddress() to enable slave processing
       Enabling match addresses before installing handler callbacks can
-      result in locking the I2C bus when a master accesses those slave addresses
+      result in locking the I2C bus when a master accesses those 
+      unconfigured slave addresses
 */
 
 void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
@@ -237,18 +246,6 @@ static INLINE
   return i2c_lld_get_slaveReceive(i2cp);
 }
 
-static INLINE
-  const I2CSlaveMsg *i2cSlaveLockReceive(I2CDriver *i2cp)
-/*
-  Lock the I2C bus on reception of next message
-  until i2cSlaveReceive is called with a non-null rxMsg parameter
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveLockReceive");
-  return i2c_lld_lock_slaveReceive(i2cp);
-}
-
-
 void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
 /*
   Prepare to reply to subsequent I2C read requests from bus masters
@@ -269,17 +266,6 @@ static INLINE
   return i2c_lld_get_slaveReply(i2cp);
 }
 
-static INLINE
-  const I2CSlaveMsg *i2cSlaveLockReply(I2CDriver *i2cp)
-/*
-  Lock the I2C bus on next query
-  until i2cSlaveReply is called with a non-null replyMsg parameter
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveLockReply");
-  return i2c_lld_lock_slaveReply(i2cp);
-}
-
 static INLINE void
   i2cSlaveReceiveI(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 /*
@@ -291,14 +277,14 @@ static INLINE void
       Does not affect the processing of any message currently being received
 */
 {
-  chDbgCheck((i2cp != NULL), "i2cSlaveReceiveI");
+  chDbgCheck((i2cp != NULL && rxMsg != NULL), "i2cSlaveReceiveI");
   i2c_lld_slaveReceive(i2cp, rxMsg);
 }
 
 static INLINE void
   i2cSlaveReplyI(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 /*
-  Prepare to reply to subsequent I2C read requests from bus masters
+  Prepare to reply to I2C read requests from bus masters
   according to the replyMsg configuration.
 
   Notes:
@@ -306,7 +292,7 @@ static INLINE void
       Does not affect the processing of any message reply being sent
 */
 {
-   chDbgCheck((i2cp != NULL), "i2cSlaveReplyI");
+   chDbgCheck((i2cp != NULL && replyMsg != NULL), "i2cSlaveReplyI");
    i2c_lld_slaveReply(i2cp, replyMsg);
 }
 
