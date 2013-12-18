@@ -15,7 +15,7 @@
 */
 /*
    Concepts and parts of this file have been contributed by Uladzimir Pylinsky
-   aka barthess.
+   aka barthess.  I2C Slave API contributed by Brent Roman (brent@mbari.org)
  */
 
 /**
