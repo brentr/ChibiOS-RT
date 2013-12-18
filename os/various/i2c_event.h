@@ -67,22 +67,34 @@ typedef struct i2cEventConfig {
 #define i2cEventSizeofQ(depth) (sizeof(i2cEventQbody)+depth*sizeof(i2cEvent))
 
 /*
-  statically allocate an i2cEventQ of given name and depth
+  (statically) allocate an i2cEventQ of given name and depth
 */
-#define i2cEventStaticQ(name, depth) union { \
-  i2cEventQbody q; char space[i2cEventSizeofQ(depth)];} name
+#define i2cEventAllocateQ(depth) union { \
+  i2cEventQbody body; char space[i2cEventSizeofQ(depth)];}
+
 
 /*
-  i2cEventQbody allocated with i2cEventStaticQ() above
+  configuration for an i2c device with associated event queue
 */
-#define i2cEventStaticQbody(name) ((name).q)
+#define i2cEventConfigQueue(qname, depth, ...) { \
+  {__VA_ARGS__}, {&(qname).body, (depth)}}
 
 /*
-   Example of allocating a queue foo statically and referencing it
+  complete configuration for queued i2c device channel
+*/
+#define i2cEventChannelCfg(channel, depth, ...) \
+  static i2cEventAllocateQ(depth) channel##Q; \
+  static const i2cEventConfig channel = \
+    i2cEventConfigQueue(channel##Q, (depth), __VA_ARGS__)
 
-static i2cEventStaticQ(foo, 4);    //named foo with max depth 4 (w/5 elements)
+/*
+   Example of allocating a queued I2C channel with a 4 deep event queue
 
-     &i2cEventStaticQbody(foo)     // pointer to body of queue allocated above
+  //allocate i2c configuration and associated queue
+  i2cEventChannel(myI2C, 4, OPMODE_I2C, 100000, STD_DUTY_CYCLE);
+  ...
+  i2cStart(&I2CD1, &myI2C.cfg);   //pass the driver its configuration struct
+  ...
 */
 
 

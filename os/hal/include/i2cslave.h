@@ -194,17 +194,17 @@ static INLINE
 
   If receive buffers become full or a reply to a read request cannot be
   generated immediately, the relevant I2CSlaveMsg struct may be substituted
-  for another whose body pointer is NULL or whose body size is zero.  
+  for another whose body pointer is NULL or whose body size is zero.
   Note that, I2CSlaveMsg structs may be modified
   in place within a channel's callbacks to the same effect.
- 
+
   A NULL body pointer or zero size causes the slave to signal the master node
   to wait by holding the I2C clock signal low, "stretching it", during the next
   transaction to which that I2CSlaveMsg applies.
   The I2C clock resumes only after a i2cSlaveSetReceive() or SetReply() is
   called with an I2CSlaveMsg containing a non-NULL body,
   or after the transaction timeout expires.
-  
+
   Therefore, if a NULL body pointer is replaced with a non-NULL one or
   a zero length is replaced with a non-zero one, i2cSlaveReceive() or
   i2cSlaveReply() MUST be called (even with the same values as last time)
@@ -222,7 +222,7 @@ void i2cSlaveConfigure(I2CDriver *i2cp,
       Must be called from a thread
       Subsequently call i2cMatchAddress() to enable slave processing
       Enabling match addresses before installing handler callbacks can
-      result in locking the I2C bus when a master accesses those 
+      result in locking the I2C bus when a master accesses those
       unconfigured slave addresses
 */
 
