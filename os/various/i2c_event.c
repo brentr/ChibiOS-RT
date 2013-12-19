@@ -59,7 +59,8 @@ const I2CSlaveMsg i2cQrx = {0, NULL, ignore, wakeOnRx, wakeOnError},
 
 static INLINE void i2cQdeq(i2cEventQbody *body, i2cQindex depth)
 /*
-  remove the oldest element from the queue
+  Remove the oldest element from the queue.
+  Add an i2cDropped element if queue was full and there were missed events.
 */
 {
   if (++body->oldest >= depth)
@@ -79,7 +80,7 @@ static INLINE void i2cQdeq(i2cEventQbody *body, i2cQindex depth)
 
 static void queueCurrentEvent(I2CDriver *i2cp, i2cEventType type)
 /*
-  add the current i2c event type specified to q associated with device i2cp
+  Add the current i2c event type specified to q associated with device i2cp.
 */
 {
   const i2cEventQ *i2cq = &((const i2cEventConfig *)i2cp->config)->queue;
@@ -162,11 +163,8 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
   if (body->thread)
     chDbgPanic("i2cAwaitEvent() reentry");
 #endif
-  if (i2cQempty(body))
-    goto empty;
-  i2cQdeq(body, i2cq->depth);  /* dequeue last event returned */
-  if (i2cQempty(body)) {
-empty:
+  /* dequeue last event returned */
+  if (i2cQempty(body) || (i2cQdeq(body, i2cq->depth), i2cQempty(body))) {
     i2c_lld_slaveReceive(i2cp, &rx);
     i2cp->slaveNextReply = &i2cQreply;
     body->thread = chThdSelf();
@@ -175,7 +173,6 @@ empty:
   }
   i2cQindex oldest = body->oldest;
   chSysUnlock();
-
   return body->event + oldest;
 }
 
@@ -214,11 +211,8 @@ const i2cEvent *i2cAnswer(I2CDriver *i2cp,
   if (body->thread)
     chDbgPanic("i2cAnswer() reentry");
 #endif
-  if (i2cQempty(body))
-    goto empty;
-  i2cQdeq(body, i2cq->depth);  /* dequeue last event returned */
-  if (i2cQempty(body)) {
-empty:
+  /* dequeue last event returned */
+  if (i2cQempty(body) || (i2cQdeq(body, i2cq->depth), i2cQempty(body))) {
     i2c_lld_slaveReply(i2cp, &answer);
     body->thread = chThdSelf();
     chSchGoSleepS(THD_STATE_SUSPENDED);
@@ -226,7 +220,6 @@ empty:
   }
   i2cQindex oldest = body->oldest;
   chSysUnlock();
-
   return body->event + oldest;
 }
 
