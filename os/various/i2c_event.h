@@ -23,6 +23,7 @@
 /*===========================================================================*/
 
 typedef uint16_t i2cQindex;
+#define i2cQfull  (1<<15)    /* set MSB to indicate flag fifo is full */
 
 typedef enum {
   i2cMessage,       /* message received from bus master */
@@ -44,7 +45,7 @@ typedef struct i2cEventQbody {  /* event queue body */
   unsigned   dropped;         /* # of events dropped due to full queue */
   i2cQindex  newest, oldest;  /* index of newest and oldest events in queue */
   i2cEvent   event[1];        /* event queue placeholder */
-} i2cEventQbody;              /*   (actual array size is 1+depth elements) */
+} i2cEventQbody;              /* (actual event array size is depth elements) */
 
 typedef struct i2cEventQ {  /* event queue descriptor */
   i2cEventQbody *body;      /* event queue */
@@ -64,7 +65,8 @@ typedef struct i2cEventConfig {
 /*
   the size of an i2cEventQ as a function of its (maximum) depth
 */
-#define i2cEventSizeofQ(depth) (sizeof(i2cEventQbody)+depth*sizeof(i2cEvent))
+#define i2cEventSizeofQ(depth) \
+  (sizeof(i2cEventQbody) + ((depth)-1)*sizeof(i2cEvent))
 
 /*
   (statically) allocate an i2cEventQ of given name and depth

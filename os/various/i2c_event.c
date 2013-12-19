@@ -37,8 +37,6 @@
 
 #include "i2c_event.h"
 
-#define qEmpty(body) ((body)->oldest == (body)->newest)
-
 #define ignore  I2CSlaveDummyCB
 
 
@@ -56,31 +54,41 @@ const I2CSlaveMsg i2cQrx = {0, NULL, ignore, wakeOnRx, wakeOnError},
 /* Local functions.                                                          */
 /*===========================================================================*/
 
-static void queueCurrentEvent(
-  I2CDriver *i2cp, i2cEventType type, i2caddr_t targetAdr)
+#define i2cQempty(body) ((body)->oldest == (body)->newest)
+
+static INLINE void i2cQdeq(i2cEventQbody *body, i2cQindex depth)
+/*
+  remove the oldest element from the queue
+*/
+{
+  body->newest &= ~i2cQfull;
+  if (++body->oldest >= depth)
+    body->oldest = 0;
+}
+
+
+static void queueCurrentEvent(I2CDriver *i2cp, i2cEventType type)
 /*
   add the current i2c event type specified to q associated with device i2cp
-  targetAdr parameter is i2cp->targetAdr or i2cp->nextTargetAdr as appropriate
 */
 {
   const i2cEventQ *i2cq = &((const i2cEventConfig *)i2cp->config)->queue;
   i2cEventQbody *body = i2cq->body;
   i2cQindex newest = body->newest;
-  i2cEvent *next = body->event + newest;
-  if (++newest >= i2cq->depth)
-    newest = 0;
-  if (newest != body->oldest) {  /* not full */
+  if (newest & i2cQfull)
+    body->dropped++;  /* we've nowhere to put this event :-( */
+  else{
+    i2cEvent *next = body->event + newest;
+    if (++newest >= i2cq->depth)
+      newest = 0;
+    if (newest == body->oldest)
+      newest |= i2cQfull;  /* fifo just became full */
+    body->newest = newest;
     next->type = type;
-    next->targetAdr = targetAdr;
+    next->targetAdr = i2c_lld_get_slaveTargetAdr(i2cp);
     next->flags = i2c_lld_get_slaveErrors(i2cp);
     next->bytes = i2c_lld_get_slaveBytes(i2cp);
-    body->newest = newest;
-  }else /* we've nowhere to put this event :-( */
-    body->dropped++;
-
-  i2cp->slaveNextRx = &i2cQrx;
-  i2cp->slaveNextReply = &i2cQreply;
-
+  }
   chSysLockFromIsr();
   Thread *tp = body->thread;
   if (tp != NULL) {
@@ -93,22 +101,22 @@ static void queueCurrentEvent(
 
 static void wakeOnRx(I2CDriver *i2cp)
 {
-  queueCurrentEvent(i2cp, i2cMessage, i2c_lld_get_slaveTargetAdr(i2cp));
+  queueCurrentEvent(i2cp, i2cMessage);
 }
 
 static void wakeOnQuery(I2CDriver *i2cp)
 {
-  queueCurrentEvent(i2cp, i2cQuery, i2c_lld_get_slaveMatchedAdr(i2cp));
+  queueCurrentEvent(i2cp, i2cQuery);
 }
 
 static void wakeWhenSent(I2CDriver *i2cp)
 {
-  queueCurrentEvent(i2cp, i2cReplied, i2c_lld_get_slaveTargetAdr(i2cp));
+  queueCurrentEvent(i2cp, i2cReplied);
 }
 
 static void wakeOnError(I2CDriver *i2cp)
 {
-  queueCurrentEvent(i2cp, i2cError, i2c_lld_get_slaveMatchedAdr(i2cp));
+  queueCurrentEvent(i2cp, i2cError);
 }
 
 
@@ -129,6 +137,7 @@ static const i2cEvent *eventsDropped(i2cEventQbody *body)
   dropped->targetAdr = i2cInvalidAdr;
   return (const i2cEvent *)dropped;
 }
+
 
 /*===========================================================================*/
 /* Exported functions.                                                       */
@@ -158,15 +167,14 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
   i2cEventQbody *body = i2cq->body;
 
   chSysLock();
-#if CH_DBG_SYSTEM_STATE_CHECK
-  if (i2cq->thread)
+#ifdef CH_DBG_SYSTEM_STATE_CHECK
+  if (body->thread)
     chDbgPanic("i2cAwaitEvent reentry");
 #endif
-  if (qEmpty(body))
+  if (i2cQempty(body))
     goto empty;
-  if (++body->oldest >= i2cq->depth)  /* dequeue last event returned */
-    body->oldest = 0;
-  if (qEmpty(body)) {
+  i2cQdeq(body, i2cq->depth);  /* dequeue last event returned */
+  if (i2cQempty(body)) {
 empty:
     if (body->dropped > 0)
       return eventsDropped(body);
@@ -174,6 +182,7 @@ empty:
     i2cp->slaveNextReply = &i2cQreply;
     body->thread = chThdSelf();
     chSchGoSleepS(THD_STATE_SUSPENDED);
+    i2cp->slaveNextRx = &i2cQrx;
   }
   i2cQindex oldest = body->oldest;
   chSysUnlock();
@@ -211,21 +220,21 @@ const i2cEvent *i2cAnswer(I2CDriver *i2cp,
   i2cEventQbody *body = i2cq->body;
 
   chSysLock();
-#if CH_DBG_SYSTEM_STATE_CHECK
+#ifdef CH_DBG_SYSTEM_STATE_CHECK
   if (body->thread)
     chDbgPanic("i2cAnswer reentry");
 #endif
-  if (qEmpty(body))
+  if (i2cQempty(body))
     goto empty;
-  if (++body->oldest >= i2cq->depth)  /* dequeue last event returned */
-    body->oldest = 0;
-  if (qEmpty(body)) {
+  i2cQdeq(body, i2cq->depth);  /* dequeue last event returned */
+  if (i2cQempty(body)) {
 empty:
     if (body->dropped > 0)
       return eventsDropped(body);
     i2c_lld_slaveReply(i2cp, &answer);
     body->thread = chThdSelf();
     chSchGoSleepS(THD_STATE_SUSPENDED);
+    i2cp->slaveNextReply = &i2cQreply;
   }
   i2cQindex oldest = body->oldest;
   chSysUnlock();

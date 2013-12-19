@@ -515,10 +515,6 @@ struct I2CDriver {
    */
   i2caddr_t                 targetAdr;
   /**
-   * @brief     Most recently matched slave address
-   */
-  i2caddr_t                 nextTargetAdr;
-  /**
    * @brief     Error Mask for last slave message
    */
   i2cflags_t                slaveErrors;
@@ -612,15 +608,6 @@ struct I2CDriver {
  * @notapi
  */
 #define i2c_lld_get_slaveTargetAdr(i2cp) ((i2cp)->targetAdr)
-
-/**
- * @brief   Get slave last matched (target) address from I2C driver.
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-#define i2c_lld_get_slaveMatchedAdr(i2cp) ((i2cp)->nextTargetAdr)
 
 /**
  * @brief   Get slave receive message descriptor from I2C driver.

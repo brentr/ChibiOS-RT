@@ -178,80 +178,103 @@ static void timeExpired(void *i2cv) {
 
 
 /**
- * @brief   stop slave mode timeout countdown
+ * @brief   stop slave mode transaction timeout countdown
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  *
  * @notapi
  */
-static INLINE void stopTimeout(I2CDriver *i2cp)
+static INLINE void stopAction(I2CDriver *i2cp)
 {
   if (chVTIsArmedI(&i2cp->slaveTimer))
     chVTResetI(&i2cp->slaveTimer);
 }
 
 /**
- * @brief   start or restart slave mode timeout countdown
+ * @brief   start or restart slave mode transaction
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  *
  * @notapi
  */
-static INLINE void startTimeout(I2CDriver *i2cp)
+static INLINE void startAction(I2CDriver *i2cp, i2caddr_t targetAdr)
 {
-  stopTimeout(i2cp);
+  stopAction(i2cp);
+  i2cp->targetAdr = targetAdr;
+  i2cp->slaveBytes = 0;
+  i2cp->slaveErrors = 0;
   if (i2cp->slaveTimeout != TIME_INFINITE)
     chVTSetI(&i2cp->slaveTimer, i2cp->slaveTimeout, timeExpired, i2cp);
 }
 
 /**
- * @brief   finish slave receive message processing
+ * @brief   end slave receive message DMA
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  *
  * @notapi
  */
-static void finishSlaveRx(I2CDriver *i2cp)
+static INLINE void endSlaveRxDMA(I2CDriver *i2cp)
 {
-  const I2CSlaveMsg *rx = i2cp->slaveRx;
   size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
   dmaStreamDisable(i2cp->dmarx);
-  stopTimeout(i2cp);
   if (i2cp->slaveBytes)
     i2cp->slaveBytes += 0xffff - bytesRemaining;
   else
-    i2cp->slaveBytes = rx->size - bytesRemaining;
-  rx->processMsg(i2cp);
-  i2cp->targetAdr = i2cInvalidAdr;
+    i2cp->slaveBytes = i2cp->slaveRx->size - bytesRemaining;
 }
 
 /**
- * @brief   finish slave transmit message processing
+ * @brief   process slave receive message
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static INLINE void processSlaveRx(I2CDriver *i2cp)
+{
+  i2cp->slaveRx->processMsg(i2cp);
+  i2cp->targetAdr = i2cInvalidAdr;
+  stopAction(i2cp);
+}
+
+/**
+ * @brief   end slave transmit DMA
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  * @param[in] bytesRemaining  bytes lost in output queue
  *
  * @notapi
  */
-static void finishSlaveReply(I2CDriver *i2cp, size_t bytesRemaining)
+static INLINE void endSlaveReplyDMA(I2CDriver *i2cp, size_t bytesRemaining)
 {
-  const I2CSlaveMsg *reply = i2cp->slaveReply;
   bytesRemaining += dmaStreamGetTransactionSize(i2cp->dmatx);
   dmaStreamDisable(i2cp->dmatx);
-  stopTimeout(i2cp);
   if (i2cp->slaveBytes)
     i2cp->slaveBytes += 0xffff - bytesRemaining;
   else
-    i2cp->slaveBytes = reply->size - bytesRemaining;
-  reply->processMsg(i2cp);
+    i2cp->slaveBytes = i2cp->slaveReply->size - bytesRemaining;
+}
+
+/**
+ * @brief   process slave transmit message
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static INLINE void processSlaveReply(I2CDriver *i2cp)
+{
+  i2cp->slaveReply->processMsg(i2cp);
   i2cp->targetAdr = i2cInvalidAdr;
+  stopAction(i2cp);
 }
 
 
 #define setSlaveMode(i2cp, newMode)  {i2cp->mode=(newMode);}
 #else   /* ! HAL_USE_I2C_SLAVE */
 #define setSlaveMode(ignored, too)   {}
-#define stopTimeout(ignored)  {}
+#define stopAction(ignored)  {}
 #endif
 
 
@@ -406,7 +429,7 @@ static void i2c_lld_disable(I2CDriver *i2cp) {
   I2C_TypeDef *dp = i2cp->i2c;
   /* reset the I2C registers.*/
   dp->CR1 = I2C_CR1_SWRST;
-  stopTimeout(i2cp);
+  stopAction(i2cp);
   dp->CR1 = 0;
 
   /* Stop the associated DMA streams.*/
@@ -522,11 +545,12 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 #if HAL_USE_I2C_SLAVE
 /* NACK of last byte transmitted in slave response is NORMAL -- not an error! */
   if (i2cp->mode == i2cSlaveReplying && (sr & I2C_SR1_AF)) {
-    finishSlaveReply(i2cp, 1);
+    endSlaveReplyDMA(i2cp, 1);
+    processSlaveReply(i2cp);
     i2cp->mode = i2cIsSlave;
     return;
   }
-  stopTimeout(i2cp);
+  stopAction(i2cp);
 #endif
   i2cflags_t errs = 0;
 
@@ -582,6 +606,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
   uint16_t regCR1 = dp->CR1;
   uint32_t regSR2 = dp->SR2;
   uint32_t event = dp->SR1 | (regSR2 << 16);
+  i2caddr_t  targetAdr;
 
   qEvt(event);
   switch (event & I2C_EV_MASK) {
@@ -598,27 +623,30 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
    break;
 
    case I2C_EV1_SLAVE_RXADRMATCH:
-    i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
+    targetAdr = matchedAdr(dp, regSR2);
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
-    if (i2cp->mode == i2cSlaveRxing)
-      finishSlaveRx(i2cp);  /* in case of repeated start */
-    else
-      chkTransition(i2cIsSlave);
-    startTimeout(i2cp);
+    switch (i2cp->mode) {
+      case i2cIsSlave:
+        break;
+      case i2cSlaveRxing:
+        endSlaveRxDMA(i2cp);
+      case i2cLockedRxing:
+        processSlaveRx(i2cp);
+        break;
+      default:
+        goto invalidTransition;
+    }
+    startAction(i2cp, targetAdr);
     {
       const I2CSlaveMsg *rx = i2cp->slaveNextRx;
       rx->adrMatched(i2cp);
-      rx = i2cp->slaveNextRx;
+      rx = i2cp->slaveRx = i2cp->slaveNextRx;
       if (rx->body && rx->size) {
-        i2cp->slaveRx = rx;
          /* slave RX DMA setup.*/
         dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
         dmaStreamSetMemory0(i2cp->dmarx, rx->body);
         dmaStreamSetTransactionSize(i2cp->dmarx, rx->size);
         dmaStreamEnable(i2cp->dmarx);
-        i2cp->targetAdr = i2cp->nextTargetAdr;
-        i2cp->slaveBytes = 0;
-        i2cp->slaveErrors = 0;
         i2cp->mode = i2cSlaveRxing;
       }else
         i2cp->mode = i2cLockedRxing;
@@ -629,12 +657,14 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     dp->CR1 = regCR1;            /* clear STOPF */
     switch (i2cp->mode) {
       case i2cSlaveRxing:
-      case i2cLockedRxing:
-        finishSlaveRx(i2cp);
+        endSlaveRxDMA(i2cp);
+      case i2cLockedRxing:       /* for SMBus 0-byte Quick Write Command */
+        processSlaveRx(i2cp);
         break;
-      case i2cSlaveReplying:
       case i2cLockedReplying:
-        finishSlaveReply(i2cp, 2);  /* did not NACK last transmitted byte */
+        endSlaveReplyDMA(i2cp, 2);  /* did not NACK last transmitted byte */
+      case i2cSlaveReplying:     /* for SMBus 0-byte Quick Read Command */
+        processSlaveReply(i2cp);
         break;
       default:
         goto invalidTransition;
@@ -643,27 +673,30 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     break;
 
    case I2C_EV1_SLAVE_TXADRMATCH:
-    i2cp->nextTargetAdr = matchedAdr(dp, regSR2);
+    targetAdr = matchedAdr(dp, regSR2);
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
-    if (i2cp->mode == i2cSlaveRxing)
-      finishSlaveRx(i2cp);  /* in case of repeated start */
-    else
-      chkTransition(i2cIsSlave);
-    startTimeout(i2cp);
+    switch (i2cp->mode) {
+      case i2cIsSlave:
+        break;
+      case i2cSlaveRxing:
+        endSlaveRxDMA(i2cp);
+      case i2cLockedRxing:
+        processSlaveRx(i2cp);
+        break;
+      default:
+        goto invalidTransition;
+    }
+    startAction(i2cp, targetAdr);
     {
       const I2CSlaveMsg *reply = i2cp->slaveNextReply;
       reply->adrMatched(i2cp);
-      reply = i2cp->slaveNextReply;
+      reply = i2cp->slaveReply = i2cp->slaveNextReply;
       if (reply->body && reply->size) {
-        i2cp->slaveReply = reply;
         /* slave TX DMA setup.*/
         dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
         dmaStreamSetMemory0(i2cp->dmatx, reply->body);
         dmaStreamSetTransactionSize(i2cp->dmatx, reply->size);
         dmaStreamEnable(i2cp->dmatx);
-        i2cp->targetAdr = i2cp->nextTargetAdr;
-        i2cp->slaveBytes = 0;
-        i2cp->slaveErrors = 0;
         i2cp->mode = i2cSlaveReplying;
         break;
       }
@@ -1064,7 +1097,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
     i2cp->slaveNextReply = i2cp->slaveNextRx = &I2CSlaveLockOnMsg;
     i2cp->mode = i2cIsSlave;
-    i2cp->targetAdr = i2cp->nextTargetAdr = i2cInvalidAdr;
+    i2cp->targetAdr = i2cInvalidAdr;
     i2cp->slaveTimeout = TIME_INFINITE;
 #endif
 
@@ -1382,9 +1415,6 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
     dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
     dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
     dmaStreamEnable(i2cp->dmarx);
-    i2cp->targetAdr = i2cp->nextTargetAdr;
-    i2cp->slaveBytes = 0;
-    i2cp->slaveErrors = 0;
     i2cp->mode = i2cSlaveRxing;
   }
 }
@@ -1414,9 +1444,6 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
     dmaStreamSetMemory0(i2cp->dmatx, replyMsg->body);
     dmaStreamSetTransactionSize(i2cp->dmatx, replyMsg->size);
     dmaStreamEnable(i2cp->dmatx);
-    i2cp->targetAdr = i2cp->nextTargetAdr;
-    i2cp->slaveBytes = 0;
-    i2cp->slaveErrors = 0;
     i2cp->mode = i2cSlaveReplying;
   }
 }

@@ -164,21 +164,11 @@ static INLINE
 static INLINE
   i2caddr_t i2cSlaveTargetAdr(I2CDriver *i2cp)
 /*
-  target address of slave message being or last processed
+  target address of slave message
 */
 {
   chDbgCheck((i2cp != NULL), "i2cSlaveTargetAdr");
   return i2c_lld_get_slaveTargetAdr(i2cp);
-}
-
-static INLINE
-  i2caddr_t i2cSlaveMatchedAdr(I2CDriver *i2cp)
-/*
-  target address of slave message just matched
-*/
-{
-  chDbgCheck((i2cp != NULL), "i2cSlaveMatchedAdr");
-  return i2c_lld_get_slaveMatchedAdr(i2cp);
 }
 
 
