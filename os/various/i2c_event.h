@@ -160,15 +160,14 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
  * @return              pointer to i2cEvent
  *
  * @details This function is to called directly after i2cSlaveAwaitEvent()
- *          indicates that a master is awaiting a response to a query.
+ *          returns an i2cQuery event.  The next event will normally be
+ *          i2cReplied.
  *
- *          Will return a pointer to an i2cReplied or i2cError event.
- *          The returned pointer remains valid only until the next
- *          call to awaitEvent() described above.
- *
+ *          The replyBuffer must not be modified until the next event
+ *          is returned from i2cSlaveAwaitEvent().
  * @notapi
  **/
-const i2cEvent *i2cAnswer(I2CDriver *i2cp,
+void i2cAnswer(I2CDriver *i2cp,
                           const uint8_t *replyBuffer, size_t size);
 
 /** @} */

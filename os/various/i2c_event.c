@@ -44,26 +44,37 @@
 /* Exported variables.                                                       */
 /*===========================================================================*/
 
-static I2CSlaveMsgCB  wakeOnRx, wakeOnQuery, wakeWhenSent, wakeOnError;
+static I2CSlaveMsgCB  wakeOnRx, wakeOnQuery, wakeOnReplied, wakeOnError;
 
 const I2CSlaveMsg i2cQrx = {0, NULL, ignore, wakeOnRx, wakeOnError},
-            i2cQreply = {0, NULL, wakeOnQuery, ignore, wakeOnError};
+     i2cQreply = {0, NULL, wakeOnQuery, wakeOnReplied, wakeOnError};
 
 
 /*===========================================================================*/
 /* Local functions.                                                          */
 /*===========================================================================*/
 
+
 #define i2cQempty(body) ((body)->oldest == (body)->newest)
+
 
 static INLINE void i2cQdeq(i2cEventQbody *body, i2cQindex depth)
 /*
   remove the oldest element from the queue
 */
 {
-  body->newest &= ~i2cQfull;
   if (++body->oldest >= depth)
     body->oldest = 0;
+  if (body->dropped) {  /* fill newly freed slot with an i2cDropped event */
+    i2cEvent *dropped = &body->event[body->oldest];
+    dropped->type = i2cDropped;
+    dropped->bytes = body->dropped;
+    body->dropped = 0;
+    dropped->flags = I2CD_OVERRUN;
+    dropped->targetAdr = i2cInvalidAdr;
+    body->newest = body->oldest | i2cQfull;
+  }else
+    body->newest &= ~i2cQfull;
 }
 
 
@@ -109,7 +120,7 @@ static void wakeOnQuery(I2CDriver *i2cp)
   queueCurrentEvent(i2cp, i2cQuery);
 }
 
-static void wakeWhenSent(I2CDriver *i2cp)
+static void wakeOnReplied(I2CDriver *i2cp)
 {
   queueCurrentEvent(i2cp, i2cReplied);
 }
@@ -117,25 +128,6 @@ static void wakeWhenSent(I2CDriver *i2cp)
 static void wakeOnError(I2CDriver *i2cp)
 {
   queueCurrentEvent(i2cp, i2cError);
-}
-
-
-static const i2cEvent *eventsDropped(i2cEventQbody *body)
-/*
-  invoke when dropped > 0 with an empty queue
-  reinitializes the event queue, returning a i2cDropped event
-  (invoked with system locked, returns with it unlocked)
-*/
-{
-  i2cEvent *dropped = &body->event[body->oldest = 0];
-  body->newest = 1;
-  dropped->bytes = body->dropped;
-  body->dropped = 0;
-  chSysUnlock();
-  dropped->type = i2cDropped;
-  dropped->flags = I2CD_OVERRUN;
-  dropped->targetAdr = i2cInvalidAdr;
-  return (const i2cEvent *)dropped;
 }
 
 
@@ -176,8 +168,6 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
   i2cQdeq(body, i2cq->depth);  /* dequeue last event returned */
   if (i2cQempty(body)) {
 empty:
-    if (body->dropped > 0)
-      return eventsDropped(body);
     i2c_lld_slaveReceive(i2cp, &rx);
     i2cp->slaveNextReply = &i2cQreply;
     body->thread = chThdSelf();
@@ -202,44 +192,22 @@ empty:
  * @return              pointer to i2cEvent
  *
  * @details This function is to called directly after i2cSlaveAwaitEvent()
- *          indicates that a master is awaiting a response to a query.
+ *          returns an i2cQuery event.  The next event will normally be
+ *          i2cReplied.
  *
- *          Will return a pointer to an i2cReplied or i2cError event.
- *          The returned pointer remains valid only until the next
- *          call to awaitEvent() described above.
+ *          The replyBuffer must not be modified until the next event
+ *          is returned from i2cSlaveAwaitEvent().
  *
  * @notapi
  **/
-const i2cEvent *i2cAnswer(I2CDriver *i2cp,
-                      const uint8_t *replyBuffer, size_t size)
+void i2cAnswer(I2CDriver *i2cp, const uint8_t *replyBuffer, size_t size)
 {
   chDbgCheck((i2cp!=NULL && replyBuffer!=NULL && size>0), "i2cAnswer");
   const I2CSlaveMsg answer =
-    {size, (uint8_t *)replyBuffer, ignore, wakeWhenSent, wakeOnError};
-  const i2cEventQ *i2cq = &((i2cEventConfig *)i2cp->config)->queue;
-  i2cEventQbody *body = i2cq->body;
+    {size, (uint8_t *)replyBuffer, wakeOnQuery, wakeOnReplied, wakeOnError};
 
-  chSysLock();
-#ifdef CH_DBG_SYSTEM_STATE_CHECK
-  if (body->thread)
-    chDbgPanic("i2cAnswer reentry");
-#endif
-  if (i2cQempty(body))
-    goto empty;
-  i2cQdeq(body, i2cq->depth);  /* dequeue last event returned */
-  if (i2cQempty(body)) {
-empty:
-    if (body->dropped > 0)
-      return eventsDropped(body);
-    i2c_lld_slaveReply(i2cp, &answer);
-    body->thread = chThdSelf();
-    chSchGoSleepS(THD_STATE_SUSPENDED);
-    i2cp->slaveNextReply = &i2cQreply;
-  }
-  i2cQindex oldest = body->oldest;
-  chSysUnlock();
-
-  return body->event + oldest;
+  i2cSlaveReply(i2cp, &answer); /* this will start reply if master is waiting */
+  i2cp->slaveNextReply = &i2cQreply;
 }
 
 /** @} */
