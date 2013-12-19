@@ -488,15 +488,8 @@ static void i2c_lld_abort_operation(I2CDriver *i2cp) {
 static void i2c_lld_safety_timeout(void *p) {
   I2CDriver *i2cp = (I2CDriver *)p;
 
-  chSysLockFromIsr();
-  if (i2cp->thread) {
-    Thread *tp = i2cp->thread;
-    i2c_lld_abort_operation(i2cp);
-    i2cp->thread = NULL;
-    tp->p_u.rdymsg = I2C_TIMEOUT;
-    chSchReadyI(tp);
-  }
-  chSysUnlockFromIsr();
+  i2c_lld_abort_operation(i2cp);
+  wakeup_isr(i2cp, I2C_TIMEOUT);
 }
 
 
