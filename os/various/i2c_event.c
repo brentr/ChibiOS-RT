@@ -54,7 +54,6 @@ const I2CSlaveMsg i2cQrx = {0, NULL, ignore, wakeOnRx, wakeOnError},
 /* Local functions.                                                          */
 /*===========================================================================*/
 
-
 #define i2cQempty(body) ((body)->oldest == (body)->newest)
 
 
@@ -161,7 +160,7 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
   chSysLock();
 #ifdef CH_DBG_SYSTEM_STATE_CHECK
   if (body->thread)
-    chDbgPanic("i2cAwaitEvent reentry");
+    chDbgPanic("i2cAwaitEvent() reentry");
 #endif
   if (i2cQempty(body))
     goto empty;
@@ -191,23 +190,44 @@ empty:
  *
  * @return              pointer to i2cEvent
  *
- * @details This function is to called directly after i2cSlaveAwaitEvent()
+ * @details This function is to called directly after i2cAwaitEvent()
  *          returns an i2cQuery event.  The next event will normally be
  *          i2cReplied.
  *
- *          The replyBuffer must not be modified until the next event
- *          is returned from i2cSlaveAwaitEvent().
+ *          Will return a pointer to an i2cReplied or i2cError event.
+ *          The returned pointer remains valid only until the next
+ *          call to i2cAwaitEvent() or i2cAnswer().
  *
  * @notapi
  **/
-void i2cAnswer(I2CDriver *i2cp, const uint8_t *replyBuffer, size_t size)
+const i2cEvent *i2cAnswer(I2CDriver *i2cp,
+                      const uint8_t *replyBuffer, size_t size)
 {
   chDbgCheck((i2cp!=NULL && replyBuffer!=NULL && size>0), "i2cAnswer");
   const I2CSlaveMsg answer =
     {size, (uint8_t *)replyBuffer, wakeOnQuery, wakeOnReplied, wakeOnError};
+  const i2cEventQ *i2cq = &((i2cEventConfig *)i2cp->config)->queue;
+  i2cEventQbody *body = i2cq->body;
 
-  i2cSlaveReply(i2cp, &answer); /* this will start reply if master is waiting */
-  i2cp->slaveNextReply = &i2cQreply;
+  chSysLock();
+#ifdef CH_DBG_SYSTEM_STATE_CHECK
+  if (body->thread)
+    chDbgPanic("i2cAnswer() reentry");
+#endif
+  if (i2cQempty(body))
+    goto empty;
+  i2cQdeq(body, i2cq->depth);  /* dequeue last event returned */
+  if (i2cQempty(body)) {
+empty:
+    i2c_lld_slaveReply(i2cp, &answer);
+    body->thread = chThdSelf();
+    chSchGoSleepS(THD_STATE_SUSPENDED);
+    i2cp->slaveNextReply = &i2cQreply;
+  }
+  i2cQindex oldest = body->oldest;
+  chSysUnlock();
+
+  return body->event + oldest;
 }
 
 /** @} */
