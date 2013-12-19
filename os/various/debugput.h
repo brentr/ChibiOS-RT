@@ -30,9 +30,11 @@
 
 #include <ch.h>
 
-//max length of debugPrint() string.
-//0 omits debugPrint() entirely
-//<0 avoids allocation of global buffer by evaluating printf twice
+/*
+  max length of debugPrint() string.
+  0 omits debugPrint() entirely
+  <0 avoids allocation of global buffer by evaluating printf twice
+*/
 #define debugPrintBufSize -250
 
 Thread *debugPutInit(char *outq, size_t outqSize);
