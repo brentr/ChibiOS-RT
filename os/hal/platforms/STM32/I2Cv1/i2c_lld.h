@@ -489,14 +489,22 @@ struct I2CDriver {
    */
   const stm32_dma_stream_t  *dmatx;
   /**
-   * @brief     I2C transaction timer
-   */
-  VirtualTimer              timer;
-  /**
    * @brief     Pointer to the I2Cx registers block.
    */
   I2C_TypeDef               *i2c;
 
+#if HAL_USE_I2C_LOCK || HAL_USE_I2C_SLAVE
+  /**
+   * @brief     I2C transaction timer
+   */
+  VirtualTimer              timer;
+#endif
+#if HAL_USE_I2C_LOCK
+  /**
+   * @brief     I2C bus lock duration
+   */
+  systime_t                 lockTimeout;
+#endif
 #if HAL_USE_I2C_SLAVE
   /* additional fields to support I2C slave transactions */
   /**

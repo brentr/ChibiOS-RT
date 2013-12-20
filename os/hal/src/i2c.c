@@ -256,6 +256,31 @@ msg_t i2cMasterReceiveTimeout(I2CDriver *i2cp,
 }
 
 
+#if HAL_USE_I2C_LOCK    /* I2C slave mode support */
+
+void i2cLock(I2CDriver *i2cp, systime_t lockDuration)
+/*
+    Lock I2C bus at the beginning of the next message sent
+    for a maximum of lockDuration ticks.  No other I2C masters will
+    be allowed to interrupt until i2cUnlock() is called.
+    
+    i2cLock(i2cp, TIME_IMMEDIATE) is equivalent to i2cUnlock.
+*/
+{
+  chDbgCheck((i2cp != NULL), "i2cLock");
+  chSysLock();
+  i2c_lld_lock(i2cp, lockDuration);
+  chSysUnlock();
+}
+
+/*
+    Unlock I2C bus if it is locked by this master 
+*/
+#define i2cUnlock(i2cp)  i2cLock((i2cp), TIME_IMMEDIATE)
+
+#endif
+
+
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 
 msg_t i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
@@ -268,9 +293,8 @@ msg_t i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
 */
 {
   chDbgCheck((i2cp != NULL), "i2cMatchAddress");
-  msg_t result;
   chSysLock();
-  result = i2c_lld_matchAddress(i2cp, i2cadr);
+  msg_t result = i2c_lld_matchAddress(i2cp, i2cadr);
   chSysUnlock();
   return result;
 }
