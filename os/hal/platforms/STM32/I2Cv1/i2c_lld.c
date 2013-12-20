@@ -167,13 +167,11 @@ static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
 static void timeExpired(void *i2cv) {
   I2CDriver *i2cp = (I2CDriver *)i2cv;
 
-  chSysLockFromIsr();
   i2c_lld_abort_operation(i2cp);
   const I2CSlaveMsg *xfer = i2cp->mode >= i2cSlaveReplying ?
                                           i2cp->slaveReply : i2cp->slaveRx;
   xfer->exception(i2cp);  /* in this case, i2cp->slaveErrors == 0 */
   i2cp->mode = i2cIsSlave;
-  chSysUnlockFromIsr();
 }
 
 
