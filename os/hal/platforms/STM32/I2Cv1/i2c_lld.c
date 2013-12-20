@@ -130,10 +130,6 @@ const I2CSlaveMsg I2CSlaveLockOnMsg = {
 };
 
 /*===========================================================================*/
-/* Driver local variables and types.                                         */
-/*===========================================================================*/
-
-/*===========================================================================*/
 /* Driver local functions.                                                   */
 /*===========================================================================*/
 
@@ -165,7 +161,7 @@ static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
  * @notapi
  */
 static void timeExpired(void *i2cv) {
-  I2CDriver *i2cp = (I2CDriver *)i2cv;
+  I2CDriver *i2cp = i2cv;
 
   chSysLockFromIsr();
   i2c_lld_abort_operation(i2cp);
@@ -186,8 +182,8 @@ static void timeExpired(void *i2cv) {
  */
 static INLINE void stopAction(I2CDriver *i2cp)
 {
-  if (chVTIsArmedI(&i2cp->slaveTimer))
-    chVTResetI(&i2cp->slaveTimer);
+  if (chVTIsArmedI(&i2cp->timer))
+    chVTResetI(&i2cp->timer);
 }
 
 /**
@@ -204,7 +200,7 @@ static INLINE void startAction(I2CDriver *i2cp, i2caddr_t targetAdr)
   i2cp->slaveBytes = 0;
   i2cp->slaveErrors = 0;
   if (i2cp->slaveTimeout != TIME_INFINITE)
-    chVTSetI(&i2cp->slaveTimer, i2cp->slaveTimeout, timeExpired, i2cp);
+    chVTSetI(&i2cp->timer, i2cp->slaveTimeout, timeExpired, i2cp);
 }
 
 /**
@@ -486,9 +482,15 @@ static void i2c_lld_abort_operation(I2CDriver *i2cp) {
  * @notapi
  */
 static void i2c_lld_safety_timeout(void *p) {
-  I2CDriver *i2cp = (I2CDriver *)p;
+  I2CDriver *i2cp = p;
 
-  i2c_lld_abort_operation(i2cp);
+#if HAL_USE_I2C_SLAVE
+  if (i2cp->mode > i2cIsSlave && i2cp->mode < i2cIsMaster) {
+    stopAction(i2cp);  /* abort any active slave transaction */
+    timeExpired(i2cp);
+  }else
+#endif
+    i2c_lld_abort_operation(i2cp);
   wakeup_isr(i2cp, I2C_TIMEOUT);
 }
 
@@ -953,9 +955,7 @@ void i2c_lld_init(void) {
   I2CD1.i2c    = I2C1;
   I2CD1.dmarx  = STM32_DMA_STREAM(STM32_I2C_I2C1_RX_DMA_STREAM);
   I2CD1.dmatx  = STM32_DMA_STREAM(STM32_I2C_I2C1_TX_DMA_STREAM);
-#if HAL_USE_I2C_SLAVE
-  chVTInit(&I2CD1.slaveTimer);
-#endif
+  chVTInit(&I2CD1.timer);
 #endif /* STM32_I2C_USE_I2C1 */
 
 #if STM32_I2C_USE_I2C2
@@ -964,9 +964,7 @@ void i2c_lld_init(void) {
   I2CD2.i2c    = I2C2;
   I2CD2.dmarx  = STM32_DMA_STREAM(STM32_I2C_I2C2_RX_DMA_STREAM);
   I2CD2.dmatx  = STM32_DMA_STREAM(STM32_I2C_I2C2_TX_DMA_STREAM);
-#if HAL_USE_I2C_SLAVE
-  chVTInit(&I2CD2.slaveTimer);
-#endif
+  chVTInit(&I2CD2.timer);
 #endif /* STM32_I2C_USE_I2C2 */
 
 #if STM32_I2C_USE_I2C3
@@ -975,9 +973,7 @@ void i2c_lld_init(void) {
   I2CD3.i2c    = I2C3;
   I2CD3.dmarx  = STM32_DMA_STREAM(STM32_I2C_I2C3_RX_DMA_STREAM);
   I2CD3.dmatx  = STM32_DMA_STREAM(STM32_I2C_I2C3_TX_DMA_STREAM);
-#if HAL_USE_I2C_SLAVE
-  chVTInit(&I2CD3.slaveTimer);
-#endif
+  chVTInit(&I2CD3.timer);
 #endif /* STM32_I2C_USE_I2C3 */
 }
 

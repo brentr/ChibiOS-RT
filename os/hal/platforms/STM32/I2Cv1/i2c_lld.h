@@ -489,6 +489,10 @@ struct I2CDriver {
    */
   const stm32_dma_stream_t  *dmatx;
   /**
+   * @brief     I2C transaction timer
+   */
+  VirtualTimer              timer;
+  /**
    * @brief     Pointer to the I2Cx registers block.
    */
   I2C_TypeDef               *i2c;
@@ -526,10 +530,6 @@ struct I2CDriver {
    * @brief     Maximum # of ticks slave may stretch the I2C clock
    */
   systime_t                 slaveTimeout;
-  /**
-   * @brief     I2C clock stretch timer
-   */
-  VirtualTimer              slaveTimer;
   /**
    * @brief     Pointer to slave message reception handler
    */
