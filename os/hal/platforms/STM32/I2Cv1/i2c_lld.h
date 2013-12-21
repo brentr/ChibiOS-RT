@@ -493,6 +493,22 @@ struct I2CDriver {
    */
   I2C_TypeDef               *i2c;
 
+  /**
+   * @brief     low level I2C interface / protocol state
+   */
+  enum i2cMode {
+    i2cIdle=1,          /* awaiting address or inactive */
+    i2cSlaveRxing,      /* receiving message */
+    i2cLockedRxing,     /* stretching clock while receiving message */
+    i2cSlaveReplying,   /* replying to query */
+    i2cLockedReplying,  /* stretching clock while replying to query */
+
+    i2cIsMaster=0x11,   /* sent start bit (mastering bus) */
+    i2cMasterRxing,     /* receiving reply from slave */
+    i2cMasterTxing,     /* sending message to slave */
+    i2cMasterLocked     /* finished transaction with bus locked */
+    }  mode;
+
 #if HAL_USE_I2C_LOCK || HAL_USE_I2C_SLAVE
   /**
    * @brief     I2C transaction timer
@@ -503,24 +519,10 @@ struct I2CDriver {
   /**
    * @brief     I2C bus lock duration
    */
-  systime_t                 lockTimeout;
+  systime_t                 lockDuration;
 #endif
 #if HAL_USE_I2C_SLAVE
   /* additional fields to support I2C slave transactions */
-  /**
-   * @brief     low level I2C interface / protocol state
-   */
-  enum i2cSlaveMode {
-    i2cIsSlave=1,       /* awaiting address */
-    i2cSlaveRxing,      /* receiving message */
-    i2cLockedRxing,     /* stretching clock while receiving message */
-    i2cSlaveReplying,   /* replying to query */
-    i2cLockedReplying,  /* stretching clock while replying to query */
-
-    i2cIsMaster=0x11,   /* sent start bit (mastering bus) */
-    i2cMasterRxing,     /* receiving reply from slave */
-    i2cMasterTxing,     /* sending message to slave */
-    }  mode;
 
   /**
    * @brief     slave address of message being processed
@@ -669,6 +671,9 @@ extern "C" {
                                        uint8_t *rxbuf, size_t rxbytes,
                                        systime_t timeout);
 
+#if HAL_USE_I2C_LOCK    /* I2C slave mode support */
+  void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration);
+#endif
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
   int   i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
   void  i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);

@@ -139,10 +139,16 @@ extern "C" {
                                 i2caddr_t addr,
                                 uint8_t *rxbuf, size_t rxbytes,
                                 systime_t timeout);
+
+#if HAL_USE_I2C_LOCK    /* I2C slave mode support */
+  void i2cLock(I2CDriver *i2cp, systime_t lockDuration);
+#endif
+
 #if I2C_USE_MUTUAL_EXCLUSION
   void i2cAcquireBus(I2CDriver *i2cp);
   void i2cReleaseBus(I2CDriver *i2cp);
 #endif /* I2C_USE_MUTUAL_EXCLUSION */
+
 
 #ifdef __cplusplus
 }
