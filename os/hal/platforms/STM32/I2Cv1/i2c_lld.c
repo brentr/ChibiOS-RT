@@ -328,7 +328,7 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
 #endif
     clock_div = STM32_PCLK1 / (clock_speed * 2);
 
-    chDbgAssert(clock_div >= 0x04,
+    chDbgAssert(clock_div >= 4,
                 "i2c_lld_set_clock(), #3",
                 "Clock divider < 4 not allowed");
     regCCR |= (clock_div & I2C_CCR_CCR);
@@ -365,9 +365,9 @@ static void i2c_lld_set_clock(I2CDriver *i2cp) {
       regCCR |= I2C_CCR_DUTY;
     }
 
-    chDbgAssert(clock_div >= 0x01,
+    chDbgAssert(clock_div >= 1,
                     "i2c_lld_set_clock(), #8",
-                    "Clock divider less then 0x04 not allowed");
+                    "Clock divider less than 4 not allowed");
     regCCR |= (I2C_CCR_FS | (clock_div & I2C_CCR_CCR));
 
     /* Sets the Maximum Rise Time for fast mode.*/
@@ -705,11 +705,8 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
-    if (!i2cp->masterRxbytes) {       /* 0-length SMBus style quick read */
-      /* handle 0-length SMBus style quick read command */
-      dp->CR1 = regCR1 | I2C_CR1_STOP;
-      goto done;
-    }
+    if (!i2cp->masterRxbytes)
+      goto done;       /* 0-length SMBus style quick read */
     /* RX DMA setup.*/
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
     dmaStreamSetMemory0(i2cp->dmarx, i2cp->masterRxbuf);
@@ -740,12 +737,19 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
 doneWriting:
     if (i2cp->masterRxbuf) {
       /* Starts "read after write" operation, LSB = 1 -> receive.*/
-      i2cp->addr |= 0x01;
       dp->CR1 = regCR1 | I2C_CR1_START | I2C_CR1_ACK;
+      i2cp->addr |= 1;
       i2cp->mode = i2cIsMaster;
     }else{
-      dp->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
 done:
+#if HAL_USE_I2C_LOCK
+      if (chVTIsArmedI(&i2cp->timer) || i2cp->lockDuration == TIME_INFINITE) {
+        dp->CR1 = regCR1 | I2C_CR1_START | I2C_CR1_ACK;
+        i2cp->mode = i2cMasterLocked;
+        break;
+      }
+#endif
+      dp->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
       i2cp->mode = i2cIdle;
       wakeup_isr(i2cp, I2C_OK);
     }
@@ -1001,17 +1005,11 @@ void i2c_lld_start(I2CDriver *i2cp) {
 
 #if STM32_I2C_USE_I2C1
     if (&I2CD1 == i2cp) {
-      bool_t b;
-
-      b = dmaStreamAllocate(i2cp->dmarx,
-                            STM32_I2C_I2C1_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)i2c_lld_serve_rx_end_irq,
-                            (void *)i2cp);
+      bool_t b = dmaStreamAllocate(i2cp->dmarx, STM32_I2C_I2C1_IRQ_PRIORITY,
+                            (stm32_dmaisr_t)i2c_lld_serve_rx_end_irq, i2cp);
       chDbgAssert(!b, "i2c_lld_start(), #1", "stream already allocated");
-      b = dmaStreamAllocate(i2cp->dmatx,
-                            STM32_I2C_I2C1_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)i2c_lld_serve_tx_end_irq,
-                            (void *)i2cp);
+      b = dmaStreamAllocate(i2cp->dmatx, STM32_I2C_I2C1_IRQ_PRIORITY,
+                            (stm32_dmaisr_t)i2c_lld_serve_tx_end_irq, i2cp);
       chDbgAssert(!b, "i2c_lld_start(), #2", "stream already allocated");
       rccEnableI2C1(FALSE);
       nvicEnableVector(I2C1_EV_IRQn,
@@ -1028,17 +1026,11 @@ void i2c_lld_start(I2CDriver *i2cp) {
 
 #if STM32_I2C_USE_I2C2
     if (&I2CD2 == i2cp) {
-      bool_t b;
-
-      b = dmaStreamAllocate(i2cp->dmarx,
-                            STM32_I2C_I2C2_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)i2c_lld_serve_rx_end_irq,
-                            (void *)i2cp);
+      bool_t b = dmaStreamAllocate(i2cp->dmarx, STM32_I2C_I2C2_IRQ_PRIORITY,
+                            (stm32_dmaisr_t)i2c_lld_serve_rx_end_irq, i2cp);
       chDbgAssert(!b, "i2c_lld_start(), #3", "stream already allocated");
-      b = dmaStreamAllocate(i2cp->dmatx,
-                            STM32_I2C_I2C2_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)i2c_lld_serve_tx_end_irq,
-                            (void *)i2cp);
+      b = dmaStreamAllocate(i2cp->dmatx, STM32_I2C_I2C2_IRQ_PRIORITY,
+                            (stm32_dmaisr_t)i2c_lld_serve_tx_end_irq, i2cp);
       chDbgAssert(!b, "i2c_lld_start(), #4", "stream already allocated");
       rccEnableI2C2(FALSE);
       nvicEnableVector(I2C2_EV_IRQn,
@@ -1055,17 +1047,11 @@ void i2c_lld_start(I2CDriver *i2cp) {
 
 #if STM32_I2C_USE_I2C3
     if (&I2CD3 == i2cp) {
-      bool_t b;
-
-      b = dmaStreamAllocate(i2cp->dmarx,
-                            STM32_I2C_I2C3_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)i2c_lld_serve_rx_end_irq,
-                            (void *)i2cp);
+      bool_t b = dmaStreamAllocate(i2cp->dmarx, STM32_I2C_I2C3_IRQ_PRIORITY,
+                            (stm32_dmaisr_t)i2c_lld_serve_rx_end_irq, i2cp);
       chDbgAssert(!b, "i2c_lld_start(), #5", "stream already allocated");
-      b = dmaStreamAllocate(i2cp->dmatx,
-                            STM32_I2C_I2C3_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)i2c_lld_serve_tx_end_irq,
-                            (void *)i2cp);
+      b = dmaStreamAllocate(i2cp->dmatx, STM32_I2C_I2C3_IRQ_PRIORITY,
+                            (stm32_dmaisr_t)i2c_lld_serve_tx_end_irq, i2cp);
       chDbgAssert(!b, "i2c_lld_start(), #6", "stream already allocated");
       rccEnableI2C3(FALSE);
       nvicEnableVector(I2C3_EV_IRQn,
@@ -1148,8 +1134,6 @@ void i2c_lld_stop(I2CDriver *i2cp) {
 
 /**
  * @brief   Starts an I2C bus master transaction.
- * @details Number of receiving bytes must be more than 1 on STM32F1x. This is
- *          hardware restriction.
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  * @param[in] timeout   the number of ticks before the operation timeouts,
@@ -1172,11 +1156,6 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
 {
   VirtualTimer vt;  /* Global timeout for the whole operation.*/
 
-  i2cp->errors = 0;
-  chVTInit(&vt);
-  if (timeout != TIME_INFINITE)
-    chVTSetI(&vt, timeout, i2c_lld_safety_timeout, (void *)i2cp);
-
   I2C_TypeDef *dp = i2cp->i2c;
   if (i2cp->mode == i2cMasterLocked) {
     dp->DR = i2cp->addr;
@@ -1186,6 +1165,10 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
     dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
   }
 
+  chVTInit(&vt);
+  if (timeout != TIME_INFINITE)
+    chVTSetI(&vt, timeout, i2c_lld_safety_timeout, i2cp);
+  i2cp->errors = 0;
   i2cp->thread = chThdSelf();
   chSchGoSleepS(THD_STATE_SUSPENDED);
   if (chVTIsArmedI(&vt))
@@ -1196,8 +1179,8 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
 
 /**
  * @brief   Receives data via the I2C bus as master.
- * @details Number of receiving bytes must be more than 1 on STM32F1x. This is
- *          hardware restriction.
+ * @details Number of receiving bytes must be 0 or more than 1 on STM32F1x.
+ *          This is hardware restriction.
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  * @param[in] addr      slave device address
@@ -1225,7 +1208,7 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
   chDbgAssert((rxbytes < (1<<16)),
                 "i2c_lld_master_receive_timeout(), #1", ">64Kbytes");
 #if defined(STM32F1XX_I2C)
-  chDbgCheck((rxbytes > 1), "i2c_lld_master_receive_timeout(rxbytes<2)");
+  chDbgCheck((rxbytes != 1), "i2c_lld_master_receive_timeout(rxbytes==1)");
 #endif
   chDbgCheck((i2cp->thread==NULL), "i2c_lld_master_receive_timeout() reentry");
 
@@ -1274,7 +1257,7 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   chDbgAssert(((rxbytes | txbytes) < (1<<16)),
                 "i2c_lld_master_transmit_timeout(), #1", ">64Kbytes")
 #if defined(STM32F1XX_I2C)
-  chDbgCheck((rxbytes > 1), "i2c_lld_master_transmit_timeout(rxbytes<2)");
+  chDbgCheck((rxbytes != 1), "i2c_lld_master_transmit_timeout(rxbytes==1)");
 #endif
   chDbgCheck((i2cp->thread==NULL), "i2c_lld_master_transmit_timeout() reentry");
 
@@ -1287,6 +1270,53 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   i2cp->masterRxbytes = (uint16_t) rxbytes;
   return startMasterAction(i2cp, timeout);
 }
+
+
+#if HAL_USE_I2C_LOCK    /* I2C bus locking support */
+
+/**
+ * @brief   Handling of expired master bus lock timer
+ *
+ * @param[in] i2cv      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static void lockExpired(void *i2cv) {
+  I2CDriver *i2cp = i2cv;
+
+  if (i2cp->mode == i2cMasterLocked) {
+    i2cp->i2c->CR1 |= I2C_CR1_STOP;
+    i2cp->mode = i2cIdle;
+  }
+}
+
+
+/**
+ * @brief   Prepare to reply to I2C queries
+ *
+ * @param[in] i2cp          pointer to the @p I2CDriver object
+ * @param[in] lockDuration  number ticks to hold bus locked
+ *
+ *  Lock I2C bus at the beginning of the next message sent
+ *  for a maximum of lockDuration ticks.  No other I2C masters will
+ *  be allowed to interrupt until i2cUnlock() is called.
+ *
+ * @note  a lockDuration of TIME_IMMEDIATE immediately unlocks bus
+ * @note  a lockDuration of TIME_INFINITE locks the bus permanantely
+ * @notapi
+ **/
+void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
+{
+  i2cp->lockDuration = lockDuration;
+  if (i2cp->mode >= i2cIsMaster) {
+    stopTimer(i2cp);
+    if (lockDuration == TIME_IMMEDIATE)
+      lockExpired(i2cp);
+    else if (lockDuration != TIME_INFINITE)
+      chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
+  }
+}
+#endif
 
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
@@ -1447,54 +1477,6 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 }
 
 #endif /* HAL_USE_I2C_SLAVE */
-
-
-#if HAL_USE_I2C_LOCK    /* I2C slave mode support */
-
-/**
- * @brief   Handling of expired master bus lock timer
- *
- * @param[in] i2cv      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static void lockExpired(void *i2cv) {
-  I2CDriver *i2cp = i2cv;
-
-  if (i2cp->mode == i2cMasterLocked) {
-    i2cp->i2c->CR1 |= I2C_CR1_STOP;
-    i2cp->mode = i2cIdle;
-  }
-}
-
-
-/**
- * @brief   Prepare to reply to I2C queries
- *
- * @param[in] i2cp          pointer to the @p I2CDriver object
- * @param[in] lockDuration  number ticks to hold bus locked
- *
- *  Lock I2C bus at the beginning of the next message sent
- *  for a maximum of lockDuration ticks.  No other I2C masters will
- *  be allowed to interrupt until i2cUnlock() is called.
- *
- * @note  a lockDuration of TIME_IMMEDIATE immediately unlocks bus
- * @notapi
- **/
-void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
-{
-  i2cp->lockDuration = lockDuration;
-  if (i2cp->mode >= i2cIsMaster) {
-    stopTimer(i2cp);
-    if (lockDuration == TIME_IMMEDIATE) {
-      if (i2cp->mode == i2cMasterLocked)
-        i2cp->i2c->CR1 |= I2C_CR1_STOP;
-    }else
-      if (i2cp->lockDuration != TIME_INFINITE)
-        chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
-  }
-}
-#endif
 
 #endif /* HAL_USE_I2C */
 
