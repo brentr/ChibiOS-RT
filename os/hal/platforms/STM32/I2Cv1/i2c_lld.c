@@ -485,7 +485,10 @@ static void i2c_lld_safety_timeout(void *p) {
     timeExpired(i2cp);
   }else
 #endif
+  {
     i2c_lld_abort_operation(i2cp);
+    i2cp->mode = i2cIdle;
+  }
   wakeup_isr(i2cp, I2C_TIMEOUT);
 }
 
@@ -515,8 +518,8 @@ void reportErrs(I2CDriver *i2cp, i2cflags_t errCode)
     /* wake any master mode handling thread.*/
     wakeup_isr(i2cp, I2C_ERROR);
   }
-  i2cp->mode = i2cIdle;
 #else
+  i2cp->mode = i2cIdle;
   i2cp->errors = errCode;
   /* wake any master mode handling thread.*/
   wakeup_isr(i2cp, I2C_ERROR);
@@ -573,7 +576,7 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 
 
 /* quick and dirty queue to record event interrupts */
-#define QEVENTS 0
+#define QEVENTS 32
 #if QEVENTS > 0
 uint32_t i2cQ[QEVENTS];
 unsigned i2cI = QEVENTS;
@@ -582,6 +585,15 @@ unsigned i2cI = QEVENTS;
 #define qEvt(code)
 #endif
 
+#if 1
+static void cktrns(I2CDriver *i2cp, enum i2cMode expected)
+{
+  if (i2cp->mode != expected)
+    qEvt(expected);  //breakpoint here
+}
+#else
+cktrns(foo, bar)
+#endif
 
 /**
  * @brief   I2C event handler ISR
@@ -600,13 +612,13 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
   qEvt(event);
   switch (event & I2C_EV_MASK) {
 
-#define chkTransition(expectedMode) { \
+#define chkTransition(expectedMode) { cktrns(i2cp, expectedMode); \
    if (i2cp->mode != (expectedMode)) goto invalidTransition;}
 
    invalidTransition:   /* error on known event out of expected sequence */
     i2c_lld_abort_operation(i2cp);        /* reset and reinit */
     reportErrs(i2cp, I2CD_UNKNOWN_ERROR + i2cp->mode);
-   break;
+    break;
 
 #if HAL_USE_I2C_SLAVE
    case I2C_EV1_SLAVE_RXADRMATCH:
@@ -697,12 +709,16 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
 #endif  /* HAL_USE_I2C_SLAVE */
 
    case I2C_EV5_MASTER_MODE_SELECT:
+qEvt(0x11111111);
     dp->DR = i2cp->addr;
-    chkTransition(i2cIdle);
-    i2cp->mode = i2cIsMaster;
+    if (i2cp->mode != i2cIsMaster) {
+      chkTransition(i2cIdle);
+      i2cp->mode = i2cIsMaster;
+    }
     break;
 
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
+qEvt(0x22222222);
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
     if (!i2cp->masterRxbytes)
@@ -719,6 +735,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     break;
 
    case I2C_EV6_MASTER_TRA_MODE_SELECTED:
+qEvt(0x33333333);
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
     if (!i2cp->masterTxbytes)
@@ -732,8 +749,10 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     break;
 
    case I2C_EV8_2_MASTER_BYTE_TRANSMITTED:
-    chkTransition(i2cMasterTxing);
+qEvt(0x44444444);
     /* Catches BTF event after the end of transmission.*/
+    (void)dp->DR;  /* clears BTF flag */
+    chkTransition(i2cMasterTxing);
 doneWriting:
     if (i2cp->masterRxbuf) {
       /* Starts "read after write" operation, LSB = 1 -> receive.*/
@@ -756,6 +775,7 @@ done:
     break;
 
    default:  /* unhandled event -- abort transaction, flag unknown err */
+qEvt(0x55555555);
     i2c_lld_abort_operation(i2cp);
     i2c_lld_serve_error_interrupt(i2cp, event);
   }
@@ -1070,9 +1090,12 @@ void i2c_lld_start(I2CDriver *i2cp) {
     dmaStreamSetPeripheral(i2cp->dmarx, &dp->DR);
     dmaStreamSetPeripheral(i2cp->dmatx, &dp->DR);
 
+    i2cp->mode = i2cIdle;
+#if HAL_USE_I2C_LOCK
+    i2cp->lockDuration = TIME_IMMEDIATE;
+#endif
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
     i2cp->slaveNextReply = i2cp->slaveNextRx = &I2CSlaveLockOnMsg;
-    i2cp->mode = i2cIdle;
     i2cp->targetAdr = i2cInvalidAdr;
     i2cp->slaveTimeout = TIME_INFINITE;
 #endif
@@ -1161,7 +1184,7 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
     dp->DR = i2cp->addr;
     i2cp->mode = i2cIsMaster;
   }else {
-    chDbgCheck((i2cp->mode < i2cIsMaster), "I2C busy");
+    chDbgAssert((i2cp->mode < i2cIsMaster), "startMasterAction()", "busy");
     dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
   }
 
@@ -1206,11 +1229,13 @@ msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
                                      uint8_t *rxbuf, size_t rxbytes,
                                      systime_t timeout) {
   chDbgAssert((rxbytes < (1<<16)),
-                "i2c_lld_master_receive_timeout(), #1", ">64Kbytes");
+                "i2c_lld_master_receive_timeout(),#1", ">64Kbytes");
 #if defined(STM32F1XX_I2C)
-  chDbgCheck((rxbytes != 1), "i2c_lld_master_receive_timeout(rxbytes==1)");
+  chDbgAssert((rxbytes != 1),
+              "i2c_lld_master_receive_timeout(),#2","rxbytes==1");
 #endif
-  chDbgCheck((i2cp->thread==NULL), "i2c_lld_master_receive_timeout() reentry");
+  chDbgAssert((i2cp->thread==NULL),
+              "i2c_lld_master_receive_timeout(),#3","reentry");
 
   /* Initializes driver fields, LSB = 1 -> receive.*/
   i2cp->addr = (addr << 1) | 1;
@@ -1255,11 +1280,13 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   if (rxbuf == NULL)
     rxbytes = 0;
   chDbgAssert(((rxbytes | txbytes) < (1<<16)),
-                "i2c_lld_master_transmit_timeout(), #1", ">64Kbytes")
+                "i2c_lld_master_transmit_timeout(),#1", ">64Kbytes")
 #if defined(STM32F1XX_I2C)
-  chDbgCheck((rxbytes != 1), "i2c_lld_master_transmit_timeout(rxbytes==1)");
+  chDbgAssert((rxbytes != 1),
+              "i2c_lld_master_transmit_timeout(),#2","rxbytes==1");
 #endif
-  chDbgCheck((i2cp->thread==NULL), "i2c_lld_master_transmit_timeout() reentry");
+  chDbgAssert((i2cp->thread==NULL),
+              "i2c_lld_master_transmit_timeout(),#3","reentry");
 
   /* Initializes driver fields, LSB = 0 -> write.*/
   i2cp->addr = addr << 1;
