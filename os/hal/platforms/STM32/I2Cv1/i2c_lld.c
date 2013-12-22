@@ -211,7 +211,6 @@ static INLINE void startAction(I2CDriver *i2cp, i2caddr_t targetAdr)
 static INLINE void endSlaveRxDMA(I2CDriver *i2cp)
 {
   size_t bytesRemaining = dmaStreamGetTransactionSize(i2cp->dmarx);
-  dmaStreamDisable(i2cp->dmarx);
   if (i2cp->slaveBytes)
     i2cp->slaveBytes += 0xffff - bytesRemaining;
   else
@@ -227,6 +226,7 @@ static INLINE void endSlaveRxDMA(I2CDriver *i2cp)
  */
 static INLINE void processSlaveRx(I2CDriver *i2cp)
 {
+  dmaStreamDisable(i2cp->dmarx);
   i2cp->slaveRx->processMsg(i2cp);
   i2cp->targetAdr = i2cInvalidAdr;
   stopTimer(i2cp);
@@ -243,7 +243,6 @@ static INLINE void processSlaveRx(I2CDriver *i2cp)
 static INLINE void endSlaveReplyDMA(I2CDriver *i2cp, size_t bytesRemaining)
 {
   bytesRemaining += dmaStreamGetTransactionSize(i2cp->dmatx);
-  dmaStreamDisable(i2cp->dmatx);
   if (i2cp->slaveBytes)
     i2cp->slaveBytes += 0xffff - bytesRemaining;
   else
@@ -259,6 +258,7 @@ static INLINE void endSlaveReplyDMA(I2CDriver *i2cp, size_t bytesRemaining)
  */
 static INLINE void processSlaveReply(I2CDriver *i2cp)
 {
+  dmaStreamDisable(i2cp->dmatx);
   i2cp->slaveReply->processMsg(i2cp);
   i2cp->targetAdr = i2cInvalidAdr;
   stopTimer(i2cp);
@@ -595,6 +595,23 @@ static void cktrns(I2CDriver *i2cp, enum i2cMode expected)
 cktrns(foo, bar)
 #endif
 
+
+static INLINE void endRead(I2CDriver *i2cp, uint32_t regCR1)
+{
+  I2C_TypeDef *dp = i2cp->i2c;
+#if HAL_USE_I2C_LOCK
+  if (chVTIsArmedI(&i2cp->timer) || i2cp->lockDuration == TIME_INFINITE) {
+    dp->CR1 = regCR1 | I2C_CR1_START | I2C_CR1_ACK;
+    i2cp->mode = i2cMasterLocked;
+  }else
+#endif
+  {
+    dp->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
+    i2cp->mode = i2cIdle;
+  }
+}
+
+
 /**
  * @brief   I2C event handler ISR
  *
@@ -709,7 +726,6 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
 #endif  /* HAL_USE_I2C_SLAVE */
 
    case I2C_EV5_MASTER_MODE_SELECT:
-qEvt(0x11111111);
     dp->DR = i2cp->addr;
     if (i2cp->mode != i2cIsMaster) {
       chkTransition(i2cIdle);
@@ -718,11 +734,14 @@ qEvt(0x11111111);
     break;
 
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
-qEvt(0x22222222);
-    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
-    if (!i2cp->masterRxbytes)
-      goto done;       /* 0-length SMBus style quick read */
+    if (!i2cp->masterRxbytes) {  /* 0-length SMBus style quick read */
+      endRead(i2cp, regCR1);
+      (void)dp->SR2;  /* clear I2C_SR1_ADDR */
+      wakeup_isr(i2cp, I2C_OK);
+      break;
+    }
+    (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     /* RX DMA setup.*/
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
     dmaStreamSetMemory0(i2cp->dmarx, i2cp->masterRxbuf);
@@ -735,7 +754,6 @@ qEvt(0x22222222);
     break;
 
    case I2C_EV6_MASTER_TRA_MODE_SELECTED:
-qEvt(0x33333333);
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
     if (!i2cp->masterTxbytes)
@@ -749,7 +767,6 @@ qEvt(0x33333333);
     break;
 
    case I2C_EV8_2_MASTER_BYTE_TRANSMITTED:
-qEvt(0x44444444);
     /* Catches BTF event after the end of transmission.*/
     (void)dp->DR;  /* clears BTF flag */
     chkTransition(i2cMasterTxing);
@@ -760,22 +777,12 @@ doneWriting:
       i2cp->addr |= 1;
       i2cp->mode = i2cIsMaster;
     }else{
-done:
-#if HAL_USE_I2C_LOCK
-      if (chVTIsArmedI(&i2cp->timer) || i2cp->lockDuration == TIME_INFINITE) {
-        dp->CR1 = regCR1 | I2C_CR1_START | I2C_CR1_ACK;
-        i2cp->mode = i2cMasterLocked;
-        break;
-      }
-#endif
-      dp->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
-      i2cp->mode = i2cIdle;
+      endRead(i2cp, regCR1);
       wakeup_isr(i2cp, I2C_OK);
     }
     break;
 
    default:  /* unhandled event -- abort transaction, flag unknown err */
-qEvt(0x55555555);
     i2c_lld_abort_operation(i2cp);
     i2c_lld_serve_error_interrupt(i2cp, event);
   }
@@ -1312,7 +1319,7 @@ static void lockExpired(void *i2cv) {
   I2CDriver *i2cp = i2cv;
 
   if (i2cp->mode == i2cMasterLocked) {
-    i2cp->i2c->CR1 |= I2C_CR1_STOP;
+    i2cp->i2c->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
     i2cp->mode = i2cIdle;
   }
 }
