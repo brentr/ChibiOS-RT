@@ -118,6 +118,12 @@ typedef enum {
 #define i2cMasterReceive(i2cp, addr, rxbuf, rxbytes)                        \
   (i2cMasterReceiveTimeout(i2cp, addr, rxbuf, rxbytes, TIME_INFINITE))
 
+/**
+ * @brief   Unlock I2C bus if it is locked by this master
+ * @api
+ */
+#define i2cUnlock(i2cp)  i2cLock((i2cp), TIME_IMMEDIATE)
+
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/

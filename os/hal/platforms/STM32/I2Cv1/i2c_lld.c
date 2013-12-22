@@ -115,6 +115,16 @@ I2CDriver I2CD2;
 I2CDriver I2CD3;
 #endif
 
+/* quick and dirty queue to record event interrupts */
+#define QEVENTS 32
+#if QEVENTS > 0
+uint32_t i2cQ[QEVENTS];
+unsigned i2cI = QEVENTS;
+#define qEvt(code) {if (++i2cI >= QEVENTS) i2cI = 0; i2cQ[i2cI]=(code);}
+#else
+#define qEvt(code)
+#endif
+
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 
@@ -160,7 +170,7 @@ static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
  *
  * @notapi
  */
-static void timeExpired(void *i2cv) {
+static void slaveTimeExpired(void *i2cv) {
   I2CDriver *i2cp = i2cv;
 
   i2c_lld_abort_operation(i2cp);
@@ -191,14 +201,14 @@ static INLINE void stopTimer(I2CDriver *i2cp)
  *
  * @notapi
  */
-static INLINE void startAction(I2CDriver *i2cp, i2caddr_t targetAdr)
+static INLINE void startSlaveAction(I2CDriver *i2cp, i2caddr_t targetAdr)
 {
   stopTimer(i2cp);
   i2cp->targetAdr = targetAdr;
   i2cp->slaveBytes = 0;
   i2cp->slaveErrors = 0;
   if (i2cp->slaveTimeout != TIME_INFINITE)
-    chVTSetI(&i2cp->timer, i2cp->slaveTimeout, timeExpired, i2cp);
+    chVTSetI(&i2cp->timer, i2cp->slaveTimeout, slaveTimeExpired, i2cp);
 }
 
 /**
@@ -479,10 +489,10 @@ static void i2c_lld_abort_operation(I2CDriver *i2cp) {
 static void i2c_lld_safety_timeout(void *p) {
   I2CDriver *i2cp = p;
 
+  stopTimer(i2cp);
 #if HAL_USE_I2C_SLAVE
   if (i2cp->mode > i2cIdle && i2cp->mode < i2cIsMaster) {
-    stopTimer(i2cp);  /* abort any active slave transaction */
-    timeExpired(i2cp);
+    slaveTimeExpired(i2cp);
   }else
 #endif
   {
@@ -503,6 +513,7 @@ static void i2c_lld_safety_timeout(void *p) {
  */
 void reportErrs(I2CDriver *i2cp, i2cflags_t errCode)
 {
+qEvt(0xffffffff);
   /* Disable any active DMA */
   dmaStreamDisable(i2cp->dmatx);
   dmaStreamDisable(i2cp->dmarx);
@@ -513,18 +524,77 @@ void reportErrs(I2CDriver *i2cp, i2cflags_t errCode)
       i2cp->mode >= i2cSlaveReplying ? i2cp->slaveReply : i2cp->slaveRx;
     xfer->exception(i2cp);
     i2cp->targetAdr = i2cInvalidAdr;
-  }else{
-    i2cp->errors = errCode;
-    /* wake any master mode handling thread.*/
-    wakeup_isr(i2cp, I2C_ERROR);
+    i2cp->mode = i2cIdle;
+    return;
   }
-#else
-  i2cp->mode = i2cIdle;
+#endif
   i2cp->errors = errCode;
+  I2C_TypeDef *dp = i2cp->i2c;
+  if (dp->SR2 & I2C_SR2_MSL)
+    if (chVTIsArmedI(&i2cp->timer)) {
+      i2cp->mode = i2cIsMaster;
+      dp->CR2 &= ~I2C_CR2_ITEVTEN;
+    }else
+      dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
+  else
+    stopTimer(i2cp);
   /* wake any master mode handling thread.*/
   wakeup_isr(i2cp, I2C_ERROR);
-#endif
+  i2cp->mode = i2cIdle;
 }
+
+
+#if HAL_USE_I2C_LOCK    /* I2C bus locking support */
+
+/**
+ * @brief   Handling of expired master bus lock timer
+ *
+ * @param[in] i2cv      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static void lockExpired(void *i2cv) {
+  I2CDriver *i2cp = i2cv;
+
+  if (i2cp->mode == i2cIsMaster) {
+    I2C_TypeDef *dp = i2cp->i2c;
+    dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
+ volatile int i = 20;
+ while (--i) ;
+    dp->CR2 |= I2C_CR2_ITEVTEN;
+    i2cp->mode = i2cIdle;
+qEvt(0xffff0000);
+  }
+}
+
+
+/**
+ * @brief   Prepare to reply to I2C queries
+ *
+ * @param[in] i2cp          pointer to the @p I2CDriver object
+ * @param[in] lockDuration  number ticks to hold bus locked
+ *
+ *  Lock I2C bus at the beginning of the next message sent
+ *  for a maximum of lockDuration ticks.  No other I2C masters will
+ *  be allowed to interrupt until i2cUnlock() is called.
+ *
+ * @note  a lockDuration of TIME_IMMEDIATE immediately unlocks bus
+ * @note  a lockDuration of TIME_INFINITE locks the bus permanantely
+ * @notapi
+ **/
+void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
+{
+  i2cp->lockDuration = lockDuration;
+  if (i2cp->mode >= i2cIsMaster) {
+    stopTimer(i2cp);
+    if (lockDuration == TIME_IMMEDIATE)
+      lockExpired(i2cp);
+    else if (lockDuration != TIME_INFINITE)
+      chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
+  }
+}
+#endif
+
 
 /**
  * @brief   I2C error handler.
@@ -538,12 +608,12 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 #if HAL_USE_I2C_SLAVE
 /* NACK of last byte transmitted in slave response is NORMAL -- not an error! */
   if (i2cp->mode == i2cSlaveReplying && (sr & I2C_SR1_AF)) {
+qEvt(0xcccccccc);
     endSlaveReplyDMA(i2cp, 1);
     processSlaveReply(i2cp);
     i2cp->mode = i2cIdle;
     return;
   }
-  stopTimer(i2cp);
 #endif
   i2cflags_t errs = 0;
 
@@ -575,34 +645,26 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 }
 
 
-/* quick and dirty queue to record event interrupts */
-#define QEVENTS 32
-#if QEVENTS > 0
-uint32_t i2cQ[QEVENTS];
-unsigned i2cI = QEVENTS;
-#define qEvt(code) {if (++i2cI >= QEVENTS) i2cI = 0; i2cQ[i2cI]=(code);}
-#else
-#define qEvt(code)
-#endif
-
-#if 1
+#if 0
 static void cktrns(I2CDriver *i2cp, enum i2cMode expected)
 {
   if (i2cp->mode != expected)
     qEvt(expected);  //breakpoint here
 }
 #else
-cktrns(foo, bar)
+#define cktrns(foo, bar)
 #endif
 
 
-static INLINE void endRead(I2CDriver *i2cp, uint32_t regCR1)
+static INLINE void endMasterAction(I2CDriver *i2cp, uint32_t regCR1)
 {
   I2C_TypeDef *dp = i2cp->i2c;
 #if HAL_USE_I2C_LOCK
   if (chVTIsArmedI(&i2cp->timer) || i2cp->lockDuration == TIME_INFINITE) {
+    dp->CR2 &= ~I2C_CR2_ITEVTEN;
     dp->CR1 = regCR1 | I2C_CR1_START | I2C_CR1_ACK;
-    i2cp->mode = i2cMasterLocked;
+    i2cp->mode = i2cIsMaster;
+qEvt(0x0000ffff);
   }else
 #endif
   {
@@ -639,6 +701,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
 
 #if HAL_USE_I2C_SLAVE
    case I2C_EV1_SLAVE_RXADRMATCH:
+qEvt(0x11111111);
    {
      i2caddr_t targetAdr = matchedAdr(dp, regSR2);
      (void)dp->SR2;  /* clear I2C_SR1_ADDR */
@@ -653,7 +716,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
        default:
          goto invalidTransition;
      }
-     startAction(i2cp, targetAdr);
+     startSlaveAction(i2cp, targetAdr);
    }
    {
       const I2CSlaveMsg *rx = i2cp->slaveNextRx;
@@ -672,6 +735,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     break;
 
    case I2C_EV2_SLAVE_RXSTOP:
+qEvt(0x22222222);
     dp->CR1 = regCR1;            /* clear STOPF */
     switch (i2cp->mode) {
       case i2cSlaveRxing:
@@ -691,6 +755,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     break;
 
    case I2C_EV1_SLAVE_TXADRMATCH:
+qEvt(0x33333333);
    {
       i2caddr_t targetAdr = matchedAdr(dp, regSR2);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
@@ -705,7 +770,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
         default:
           goto invalidTransition;
       }
-      startAction(i2cp, targetAdr);
+      startSlaveAction(i2cp, targetAdr);
    }
    {
       const I2CSlaveMsg *reply = i2cp->slaveNextReply;
@@ -726,17 +791,26 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
 #endif  /* HAL_USE_I2C_SLAVE */
 
    case I2C_EV5_MASTER_MODE_SELECT:
-    dp->DR = i2cp->addr;
-    if (i2cp->mode != i2cIsMaster) {
+qEvt(0x55555555);
+    if (i2cp->mode == i2cIsMaster)
+      dp->DR = i2cp->addr;
+    else{
       chkTransition(i2cIdle);
+      dp->DR = i2cp->addr;
       i2cp->mode = i2cIsMaster;
+      systime_t lockDuration = i2cp->lockDuration;
+      if (lockDuration != TIME_IMMEDIATE && lockDuration != TIME_INFINITE) {
+        stopTimer(i2cp);  /* should not really be necessary to stopTimer here */
+        chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
+      }
     }
     break;
 
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
+qEvt(0x66666666);
     chkTransition(i2cIsMaster);
     if (!i2cp->masterRxbytes) {  /* 0-length SMBus style quick read */
-      endRead(i2cp, regCR1);
+      endMasterAction(i2cp, regCR1);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       wakeup_isr(i2cp, I2C_OK);
       break;
@@ -754,6 +828,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     break;
 
    case I2C_EV6_MASTER_TRA_MODE_SELECTED:
+qEvt(0x77777777);
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
     chkTransition(i2cIsMaster);
     if (!i2cp->masterTxbytes)
@@ -767,6 +842,7 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
     break;
 
    case I2C_EV8_2_MASTER_BYTE_TRANSMITTED:
+qEvt(0x88888888);
     /* Catches BTF event after the end of transmission.*/
     (void)dp->DR;  /* clears BTF flag */
     chkTransition(i2cMasterTxing);
@@ -777,12 +853,13 @@ doneWriting:
       i2cp->addr |= 1;
       i2cp->mode = i2cIsMaster;
     }else{
-      endRead(i2cp, regCR1);
+      endMasterAction(i2cp, regCR1);
       wakeup_isr(i2cp, I2C_OK);
     }
     break;
 
    default:  /* unhandled event -- abort transaction, flag unknown err */
+qEvt(0x99999999);
     i2c_lld_abort_operation(i2cp);
     i2c_lld_serve_error_interrupt(i2cp, event);
   }
@@ -799,6 +876,7 @@ doneWriting:
 static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
   I2C_TypeDef *dp = i2cp->i2c;
 
+qEvt(0xaaaaaaaa);
   /* DMA errors handling.*/
 #if defined(STM32_I2C_DMA_ERROR_HOOK)
   if ((flags & (STM32_DMA_ISR_TEIF | STM32_DMA_ISR_DMEIF)) != 0) {
@@ -827,8 +905,7 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
 #endif
 
   dp->CR2 &= ~I2C_CR2_LAST;
-  dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
-  i2cp->mode = i2cIdle;
+  endMasterAction(i2cp, dp->CR1);
   wakeup_isr(i2cp, I2C_OK);
 }
 
@@ -840,6 +917,7 @@ static void i2c_lld_serve_rx_end_irq(I2CDriver *i2cp, uint32_t flags) {
  * @notapi
  */
 static void i2c_lld_serve_tx_end_irq(I2CDriver *i2cp, uint32_t flags) {
+qEvt(0xbbbbbbbb);
   /* DMA errors handling.*/
 #if defined(STM32_I2C_DMA_ERROR_HOOK)
   if ((flags & (STM32_DMA_ISR_TEIF | STM32_DMA_ISR_DMEIF)) != 0) {
@@ -1187,10 +1265,9 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
   VirtualTimer vt;  /* Global timeout for the whole operation.*/
 
   I2C_TypeDef *dp = i2cp->i2c;
-  if (i2cp->mode == i2cMasterLocked) {
-    dp->DR = i2cp->addr;
-    i2cp->mode = i2cIsMaster;
-  }else {
+  if (i2cp->mode == i2cIsMaster)
+    dp->CR2 |= I2C_CR2_ITEVTEN;
+  else {
     chDbgAssert((i2cp->mode < i2cIsMaster), "startMasterAction()", "busy");
     dp->CR1 |= I2C_CR1_START | I2C_CR1_ACK;
   }
@@ -1304,53 +1381,6 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   i2cp->masterRxbytes = (uint16_t) rxbytes;
   return startMasterAction(i2cp, timeout);
 }
-
-
-#if HAL_USE_I2C_LOCK    /* I2C bus locking support */
-
-/**
- * @brief   Handling of expired master bus lock timer
- *
- * @param[in] i2cv      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static void lockExpired(void *i2cv) {
-  I2CDriver *i2cp = i2cv;
-
-  if (i2cp->mode == i2cMasterLocked) {
-    i2cp->i2c->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
-    i2cp->mode = i2cIdle;
-  }
-}
-
-
-/**
- * @brief   Prepare to reply to I2C queries
- *
- * @param[in] i2cp          pointer to the @p I2CDriver object
- * @param[in] lockDuration  number ticks to hold bus locked
- *
- *  Lock I2C bus at the beginning of the next message sent
- *  for a maximum of lockDuration ticks.  No other I2C masters will
- *  be allowed to interrupt until i2cUnlock() is called.
- *
- * @note  a lockDuration of TIME_IMMEDIATE immediately unlocks bus
- * @note  a lockDuration of TIME_INFINITE locks the bus permanantely
- * @notapi
- **/
-void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
-{
-  i2cp->lockDuration = lockDuration;
-  if (i2cp->mode >= i2cIsMaster) {
-    stopTimer(i2cp);
-    if (lockDuration == TIME_IMMEDIATE)
-      lockExpired(i2cp);
-    else if (lockDuration != TIME_INFINITE)
-      chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
-  }
-}
-#endif
 
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */

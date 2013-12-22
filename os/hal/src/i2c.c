@@ -258,25 +258,24 @@ msg_t i2cMasterReceiveTimeout(I2CDriver *i2cp,
 
 #if HAL_USE_I2C_LOCK    /* I2C slave mode support */
 
+/**
+ * @brief   Lock I2C bus at the beginning of the next message sent
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] lockDuration   max number of ticks to hold bus locked
+ *                      - @a TIME_INFINITE no timeout.
+ *                      - @a TIME_IMMEDIATE unlock the bus immediately
+ *                      .
+ *
+ * @api
+ */
 void i2cLock(I2CDriver *i2cp, systime_t lockDuration)
-/*
-    Lock I2C bus at the beginning of the next message sent
-    for a maximum of lockDuration ticks.  No other I2C masters will
-    be allowed to interrupt until i2cUnlock() is called.
-    
-    i2cLock(i2cp, TIME_IMMEDIATE) is equivalent to i2cUnlock.
-*/
 {
   chDbgCheck((i2cp != NULL), "i2cLock");
   chSysLock();
   i2c_lld_lock(i2cp, lockDuration);
   chSysUnlock();
 }
-
-/*
-    Unlock I2C bus if it is locked by this master 
-*/
-#define i2cUnlock(i2cp)  i2cLock((i2cp), TIME_IMMEDIATE)
 
 #endif
 

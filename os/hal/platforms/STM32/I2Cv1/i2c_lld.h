@@ -505,8 +505,7 @@ struct I2CDriver {
 
     i2cIsMaster=0x11,   /* sent start bit (mastering bus) */
     i2cMasterRxing,     /* receiving reply from slave */
-    i2cMasterTxing,     /* sending message to slave */
-    i2cMasterLocked     /* finished transaction with bus locked */
+    i2cMasterTxing      /* sending message to slave */
     }  mode;
 
 #if HAL_USE_I2C_LOCK || HAL_USE_I2C_SLAVE
