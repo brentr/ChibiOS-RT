@@ -143,7 +143,7 @@ static void wakeOnError(I2CDriver *i2cp)
  * @param[out] inputBuffer  pointer to where to store received message body
  * @param[in] size          size of inputBuffer
  *
- * @return              pointer to i2cEvent struct
+ * @return              @p i2cEvent
  *
  * @details The returned pointer remains valid only until the next
  *          call to this function or slaveAnswer() described below.
@@ -185,7 +185,7 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
  * @param[in] replyBuffer   pointer to body of reply
  * @param[in] size          size of replyBuffer
  *
- * @return              pointer to i2cEvent
+ * @return              @p i2cEvent
  *
  * @details This function is to called directly after i2cAwaitEvent()
  *          returns an i2cQuery event.  The next event will normally be
