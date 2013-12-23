@@ -1396,18 +1396,16 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
  * @param[in] i2cadr    I2C network address
  *
  * @return              Length of message OR the type of event received
- * @retval 0            Success
- * @retval <0           Cannot match address in addition of those already
+ * @retval I2C_OK       Success
+ * @retval I2C_ERROR    Cannot match address in addition of those already
  *
- * *notes
- *  MatchAddress calls are cumulative.
- *   Specify address zero to match I2C "all call"
- *
- *  Does not support 10-bit addressing.
+ * @details             MatchAddress calls are cumulative.
+ *                      Specify address zero to match I2C "all call"
+ *                      Does not support 10-bit addressing.
  *
  * @notapi
  **/
-int i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
+msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
 {
   I2C_TypeDef *dp = i2cp->i2c;
   if (i2cadr == 0) {
@@ -1421,9 +1419,9 @@ int i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
     else if (!(dp->OAR2 & I2C_OAR2_ENDUAL))
       dp->OAR2 = adr | I2C_OAR2_ENDUAL;
     else if ((dp->OAR2 & (0x7f<<1)) != adr)
-      return -1;    /* cannot add this address to set of those matched */
+      return I2C_ERROR;    /* cannot add this address to set of those matched */
   }
-  return 0;
+  return I2C_OK;
 }
 
 
@@ -1433,12 +1431,11 @@ int i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
  * @param[in] i2cp      pointer to the @p I2CDriver object
  * @param[in] i2cadr    I2C network address
  *
- *  A message being transferred that has already matched the specified address
- *  will continue being processed.
+ * @details   A message being transferred that has already matched the
+ *            specified address will continue being processed.
  *  Requests to unmatch an address that is not currently being matched
  *  are ignored.
- *
- *   Does not support 10-bit addressing.
+ *  Does not support 10-bit addressing.
  *
  * @notapi
  **/
@@ -1467,9 +1464,9 @@ void i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  *
- *  Clears all match addresses.  Causes all subsequent messages to be ignored.
- *  A message being transferred that has already matched a slave address
- *  will continue being processed.
+ * @details   Causes all subsequent messages to be ignored.
+ *            A message being transferred that has already matched a
+ *            slave address will continue being processed.
  *
  * @notapi
  **/
@@ -1483,18 +1480,18 @@ void i2c_lld_unmatchAll(I2CDriver *i2cp)
 
 
 /**
- * @brief   Prepare to receive and process I2C messages
+ * @brief   Configure callbacks & buffers for query reply
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
- * @param[in] rxMsg     pointer to the @p I2CSlaveMsg struct (or NULL)
+ * @param[in] replyMsg  @p I2CSlaveMsg struct for processing subsequent queries
  *
- *  A NULL rxMsg will cause the I2C bus to stall on the next write
- *  to this slave until this function is called with a non-NULL rxMsg
- *
- *    Does not affect the processing of a message currently being received
+ * @details             Call i2cMatchAddress() after this to start processing
+ *     Enabling match addresses before installing handler callbacks can
+ *     result in locking the I2C bus when a master accesses those
+ *     unconfigured slave addresses
  *
  * @notapi
- **/
+ */
 void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 {
   chDbgCheck((rxMsg && rxMsg->size <= 0xffff), "i2c_lld_slaveReceive");
@@ -1512,18 +1509,18 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 
 
 /**
- * @brief   Prepare to reply to I2C queries
+ * @brief   Configure callbacks & buffers for query reply
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
- * @param[in] rxMsg     pointer to the @p I2CSlaveMsg struct (or NULL)
+ * @param[in] replyMsg  @p I2CSlaveMsg struct for processing subsequent queries
  *
- *  A NULL rxMsg will cause the I2C bus to stall on the next write
- *  to this slave until this function is called with a non-NULL rxMsg
- *
- *    Does not affect the processing of a message currently being received
+ * @details             Call i2cMatchAddress() after this to start processing
+ *     Enabling match addresses before installing handler callbacks can
+ *     result in locking the I2C bus when a master accesses those
+ *     unconfigured slave addresses
  *
  * @notapi
- **/
+ */
 void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 {
   chDbgCheck((replyMsg && replyMsg->size <= 0xffff), "i2c_lld_slaveReply");

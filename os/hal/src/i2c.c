@@ -72,6 +72,7 @@ void i2cInit(void) {
   i2c_lld_init();
 }
 
+
 /**
  * @brief   Initializes the standard part of a @p I2CDriver structure.
  *
@@ -97,6 +98,7 @@ void i2cObjectInit(I2CDriver *i2cp) {
 #endif
 }
 
+
 /**
  * @brief   Configures and activates the I2C peripheral.
  *
@@ -120,6 +122,7 @@ void i2cStart(I2CDriver *i2cp, const I2CConfig *config) {
   chSysUnlock();
 }
 
+
 /**
  * @brief   Deactivates the I2C peripheral.
  *
@@ -141,6 +144,7 @@ void i2cStop(I2CDriver *i2cp) {
   chSysUnlock();
 }
 
+
 /**
  * @brief   Returns the errors mask associated to the previous operation.
  *
@@ -155,6 +159,7 @@ i2cflags_t i2cGetErrors(I2CDriver *i2cp) {
 
   return i2c_lld_get_errors(i2cp);
 }
+
 
 /**
  * @brief   Sends data via the I2C bus.
@@ -175,10 +180,10 @@ i2cflags_t i2cGetErrors(I2CDriver *i2cp) {
  *                      .
  *
  * @return              The operation status.
- * @retval RDY_OK       if the function succeeded.
- * @retval RDY_RESET    if one or more I2C errors occurred, the errors can
+ * @retval I2C_OK       if the function succeeded.
+ * @retval I2C_ERROR    if one or more I2C errors occurred, the errors can
  *                      be retrieved using @p i2cGetErrors().
- * @retval RDY_TIMEOUT  if a timeout occurred before operation end.
+ * @retval I2C_TIMEOUT  if a timeout occurred before operation end.
  *
  * @api
  */
@@ -210,6 +215,7 @@ msg_t i2cMasterTransmitTimeout(I2CDriver *i2cp,
   return rdymsg;
 }
 
+
 /**
  * @brief   Receives data from the I2C bus.
  *
@@ -223,10 +229,10 @@ msg_t i2cMasterTransmitTimeout(I2CDriver *i2cp,
  *                      .
  *
  * @return              The operation status.
- * @retval RDY_OK       if the function succeeded.
- * @retval RDY_RESET    if one or more I2C errors occurred, the errors can
+ * @retval I2C_OK       if the function succeeded.
+ * @retval I2C_RESET    if one or more I2C errors occurred, the errors can
  *                      be retrieved using @p i2cGetErrors().
- * @retval RDY_TIMEOUT  if a timeout occurred before operation end.
+ * @retval I2C_TIMEOUT  if a timeout occurred before operation end.
  *
  * @api
  */
@@ -282,14 +288,24 @@ void i2cLock(I2CDriver *i2cp, systime_t lockDuration)
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 
+/**
+ * @brief   Reconfigure I2C channel to respond to indicated address
+ *          in addition to those already matched
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] i2cadr    I2C network address
+ *
+ * @return              Length of message OR the type of event received
+ * @retval I2C_OK       Success
+ * @retval I2C_ERROR    Cannot match address in addition of those already
+ *
+ * @details             MatchAddress calls are cumulative.
+ *                      Specify address zero to match I2C "all call"
+ *                      Does not support 10-bit addressing.
+ *
+ * @api
+ **/
 msg_t i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
-/*
-    Respond to messages directed to the given i2cadr.
-    MatchAddress calls are cumulative.
-    Specify address zero to match I2C "all call"
-
-    Does not support 10-bit addressing.
-*/
 {
   chDbgCheck((i2cp != NULL), "i2cMatchAddress");
   chSysLock();
@@ -299,14 +315,21 @@ msg_t i2cMatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
 }
 
 
+/**
+ * @brief   Configure to ignore messages directed to the given i2cadr
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] i2cadr    I2C bus address
+ *                      - @a 0 matches "all call"
+ *                      .
+ * @details A message being transferred that has already matched the
+ *          specified address will continue being processed.
+ *          Requests to unmatch an address that is not currently being matched
+ *          are ignored.
+ *
+ * @api
+ */
 void i2cUnmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
-/*
-    Do not match specified i2cadr.
-    A message being transferred that has already matched the specified address
-    will continue being processed.
-    Requests to unmatch an address that is not currently being matched
-    are ignored.
-*/
 {
   chDbgCheck((i2cp != NULL), "i2cUnmatchAddress");
   chSysLock();
@@ -315,12 +338,18 @@ void i2cUnmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
 }
 
 
+/**
+ * @brief   Reconfigure I2C channel to no longer match any address
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @details   Causes all subsequent messages to be ignored.
+ *            A message being transferred that has already matched a
+ *            slave address will continue being processed.
+ *
+ * @api
+ **/
 void i2cUnmatchAll(I2CDriver *i2cp)
-/*
-    Clears all match addresses.  Causes all subsequent messages to be ignored.
-    A message being transferred that has already matched a slave address
-    will continue being processed.
-*/
 {
   chDbgCheck((i2cp != NULL), "i2cUnmatchAll");
   chSysLock();
@@ -329,17 +358,23 @@ void i2cUnmatchAll(I2CDriver *i2cp)
 }
 
 
+/**
+ * @brief   Configure callbacks & buffers for message reception & query reply
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] rxMsg     @p I2CSlaveMsg struct for processing subsequent messages
+ * @param[in] replyMsg  @p I2CSlaveMsg struct for processing subsequent queries
+ *
+ * @details             Must be called from a thread
+ *                      Call i2cMatchAddress() after this to start processing
+ *     Enabling match addresses before installing handler callbacks can
+ *     result in locking the I2C bus when a master accesses those
+ *     unconfigured slave addresses
+ *
+ * @api
+ */
 void i2cSlaveConfigure(I2CDriver *i2cp,
                    const I2CSlaveMsg *rxMsg, const I2CSlaveMsg *replyMsg)
-/*
-  Configure to receive and process I2C messages and reply to read requests.
-
-  Notes:
-      Must be called from a thread
-      One must subsequently call i2cMatchAddress() to enable slave processing
-      Enabling match addresses before calling i2cSlaveConfigure() will
-      result in locking the I2C bus when a master accesses those slave addresses
-*/
 {
   chDbgCheck((i2cp != NULL), "i2cSlaveConfigure");
   chSysLock();
@@ -348,14 +383,21 @@ void i2cSlaveConfigure(I2CDriver *i2cp,
   chSysUnlock();
 }
 
-void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
-/*
-  Prepare to receive and process I2C messages according to
-  the rxMsg configuration.
 
-  Notes:
-      Does not affect the processing of any message currently being received
-*/
+/**
+ * @brief   Configure callbacks & buffers for query reply
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] replyMsg  @p I2CSlaveMsg struct for processing subsequent queries
+ *
+ * @details             Call i2cMatchAddress() after this to start processing
+ *     Enabling match addresses before installing handler callbacks can
+ *     result in locking the I2C bus when a master accesses those
+ *     unconfigured slave addresses
+ *
+ * @api
+ */
+void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 {
   chDbgCheck((i2cp != NULL && rxMsg != NULL), "i2cSlaveReceive");
   chSysLock();
@@ -363,14 +405,21 @@ void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
   chSysUnlock();
 }
 
-void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
-/*
-  Prepare to reply to subsequent I2C read requests from bus masters
-  according to the replyMsg configuration.
 
-  Notes:
-      Does not affect the processing of any message reply being sent
-*/
+/**
+ * @brief   Configure callbacks & buffers for query reply
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] replyMsg  @p I2CSlaveMsg struct for processing subsequent queries
+ *
+ * @details             Call i2cMatchAddress() after this to start processing
+ *     Enabling match addresses before installing handler callbacks can
+ *     result in locking the I2C bus when a master accesses those
+ *     unconfigured slave addresses
+ *
+ * @api
+ */
+void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
 {
   chDbgCheck((i2cp != NULL && replyMsg != NULL), "i2cSlaveReply");
   chSysLock();
@@ -404,6 +453,7 @@ void i2cAcquireBus(I2CDriver *i2cp) {
 #endif
 }
 
+
 /**
  * @brief   Releases exclusive access to the I2C bus.
  * @pre     In order to use this function the option @p I2C_USE_MUTUAL_EXCLUSION
@@ -423,6 +473,7 @@ void i2cReleaseBus(I2CDriver *i2cp) {
   chSemSignal(&i2cp->semaphore);
 #endif
 }
+
 #endif /* I2C_USE_MUTUAL_EXCLUSION */
 
 #endif /* HAL_USE_I2C */

@@ -41,13 +41,6 @@
 #define I2C_CLK_FREQ  ((STM32_PCLK1) / 1000000)
 
 /**
- * @brief   Return codes
- */
-#define I2C_OK        (RDY_OK)
-#define I2C_TIMEOUT   (RDY_TIMEOUT)
-#define I2C_ERROR     (RDY_RESET)
-
-/**
  * @brief   Invalid I2C bus address
  */
 #define i2cInvalidAdr  ((i2caddr_t) -1)
@@ -674,7 +667,7 @@ extern "C" {
   void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration);
 #endif
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
-  int   i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
+  msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
   void  i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
   void  i2c_lld_unmatchAll(I2CDriver *i2cp);
   void  i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);

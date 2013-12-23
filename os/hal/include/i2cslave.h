@@ -54,7 +54,9 @@ extern "C" {
  * @param[in] i2cadr    I2C bus address
  *                      - @a 0 matches "all call"
  *                      .
- * @return              non-zero implies failure.
+ * @return              Length of message OR the type of event received
+ * @retval I2C_OK       Success
+ * @retval I2C_ERROR    Cannot match address in addition of those already
  *
  * @details MatchAddress calls are cumulative.
  *          Specify address zero to match I2C "all call"
@@ -253,7 +255,7 @@ static INLINE
 
 /*
   An event service thread based API library called i2cevent supports processing
-  slave messages on a dedicated thread.  This facility is built upon the  
+  slave messages on a dedicated thread.  This facility is built upon the
   low-level driver's asynchronous callback functions described below:
 
   Each callback function may alter the processing of subsequent I2C
@@ -349,14 +351,7 @@ static INLINE
  * @api
  */
 void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
-/*
-  Prepare to reply to subsequent I2C read requests from bus masters
-  according to the replyMsg configuration.
 
-  Notes:
-    Called from thread context
-      Does not affect the processing of any message reply being sent
-*/
 
 /**
  * @brief   return @p I2CSlaveMsg for processing received messages

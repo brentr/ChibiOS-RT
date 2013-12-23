@@ -64,6 +64,16 @@
 #define I2CD_STOPPED  (-1)                 /**< @brief  i2cStop called      */
 /** @} */
 
+/**
+ * @name   I2C function return codes
+ * @{
+ */
+#define I2C_OK        (RDY_OK)
+#define I2C_TIMEOUT   (RDY_TIMEOUT)
+#define I2C_ERROR     (RDY_RESET)
+/** @} */
+
+
 /*===========================================================================*/
 /* Driver pre-compile time settings.                                         */
 /*===========================================================================*/

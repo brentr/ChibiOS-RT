@@ -96,6 +96,7 @@ static void queueCurrentEvent(I2CDriver *i2cp, i2cEventType type)
       newest |= i2cQfull;  /* fifo just became full */
     body->newest = newest;
     next->type = type;
+    /* use i2c_lld_* calls below to avoid repeated consistency checks */
     next->targetAdr = i2c_lld_get_slaveTargetAdr(i2cp);
     next->flags = i2c_lld_get_slaveErrors(i2cp);
     next->bytes = i2c_lld_get_slaveBytes(i2cp);
@@ -165,7 +166,7 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
 #endif
   /* dequeue last event returned */
   if (i2cQempty(body) || (i2cQdeq(body, i2cq->depth), i2cQempty(body))) {
-    i2c_lld_slaveReceive(i2cp, &rx);
+    i2c_lld_slaveReceive(i2cp, &rx);  /* i2cSlaveReceive() w/o consistency ck */
     i2cp->slaveNextReply = &i2cQreply;
     body->thread = chThdSelf();
     chSchGoSleepS(THD_STATE_SUSPENDED);
@@ -213,7 +214,7 @@ const i2cEvent *i2cAnswer(I2CDriver *i2cp,
 #endif
   /* dequeue last event returned */
   if (i2cQempty(body) || (i2cQdeq(body, i2cq->depth), i2cQempty(body))) {
-    i2c_lld_slaveReply(i2cp, &answer);
+    i2c_lld_slaveReply(i2cp, &answer);  /* i2cSlaveReply() w/o consistency ck */
     body->thread = chThdSelf();
     chSchGoSleepS(THD_STATE_SUSPENDED);
     i2cp->slaveNextReply = &i2cQreply;
