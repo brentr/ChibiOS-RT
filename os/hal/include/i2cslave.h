@@ -123,7 +123,7 @@ static INLINE msg_t
  * @param[in] i2cadr    I2C bus address
  *                      - @a 0 matches "all call"
  *                      .
- * @details Identical to i2cUnmatchAddress(), but called frim interrupt context
+ * @details Identical to i2cUnmatchAddress(), but called from interrupt context
  *
  * @api
  */
@@ -140,7 +140,7 @@ static INLINE void
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  *
- * @details Identical to i2cUnmatchAll(), but called frim interrupt context
+ * @details Identical to i2cUnmatchAll(), but called from interrupt context
  *
  * @api
  */
@@ -252,7 +252,9 @@ static INLINE
 
 
 /*
-  Asynchronous callback functions are described below:
+  An event service thread based API library called i2cevent supports processing
+  slave messages on a dedicated thread.  This facility is built upon the  
+  low-level driver's asynchronous callback functions described below:
 
   Each callback function may alter the processing of subsequent I2C
   messages and read requests by calling i2cSlaveReceive() and
@@ -276,7 +278,7 @@ static INLINE
 
   Therefore, if a NULL body pointer is replaced with a non-NULL one or
   a zero length is replaced with a non-zero one, i2cSlaveReceive() or
-  i2cSlaveReply() MUST be called (even with the same values as last time)
+  i2cSlaveReply() MUST be called -- even if with the same pointer values --
   to inform the i2c driver that the transaction may resume.
 
   Note that Receive and Reply processing is initially "locked".
