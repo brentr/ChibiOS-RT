@@ -169,6 +169,18 @@ struct I2CDriver {
 #define i2c_lld_get_errors(i2cp) ((i2cp)->errors)
 
 
+#if HAL_USE_I2C_LOCK
+/**
+ * @brief   Unlock I2C bus after the end of the next transaction
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ **/
+#define i2c_lld_unlock(i2cp) (i2cp->lockDuration = TIME_IMMEDIATE)
+#endif
+
+
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 /**
  * @brief   Get slave errors from I2C driver.

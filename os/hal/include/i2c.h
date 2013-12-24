@@ -131,11 +131,6 @@ typedef enum {
 #define i2cMasterReceive(i2cp, addr, rxbuf, rxbytes)                        \
   (i2cMasterReceiveTimeout(i2cp, addr, rxbuf, rxbytes, TIME_INFINITE))
 
-/**
- * @brief   Unlock I2C bus if it is locked by this master
- * @api
- */
-#define i2cUnlock(i2cp)  i2cLock((i2cp), TIME_IMMEDIATE)
 
 /*===========================================================================*/
 /* External declarations.                                                    */
@@ -161,6 +156,7 @@ extern "C" {
 
 #if HAL_USE_I2C_LOCK    /* I2C slave mode support */
   void i2cLock(I2CDriver *i2cp, systime_t lockDuration);
+  void i2cUnlock(I2CDriver *i2cp);
 #endif
 
 #if I2C_USE_MUTUAL_EXCLUSION

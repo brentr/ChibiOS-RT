@@ -283,6 +283,20 @@ void i2cLock(I2CDriver *i2cp, systime_t lockDuration)
   chSysUnlock();
 }
 
+/**
+ * @brief   Unlock I2C bus after the end of the next transaction
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @api
+ **/
+void i2cUnlock(I2CDriver *i2cp)
+{
+  chDbgCheck((i2cp != NULL), "i2cUnlock");
+  chSysLock();
+  i2c_lld_unlock(i2cp);
+  chSysUnlock();
+}
 #endif
 
 

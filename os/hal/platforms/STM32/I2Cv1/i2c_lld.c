@@ -297,21 +297,7 @@ static INLINE void endSlaveRxDMA(I2CDriver *i2cp)
     i2cp->slaveBytes += 0xffff - bytesRemaining;
   else
     i2cp->slaveBytes = i2cp->slaveRx->size - bytesRemaining;
-}
-
-/**
- * @brief   process slave receive message
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static INLINE void processSlaveRx(I2CDriver *i2cp)
-{
   dmaStreamDisable(i2cp->dmarx);
-  i2cp->slaveRx->processMsg(i2cp);
-  i2cp->targetAdr = i2cInvalidAdr;
-  stopTimer(i2cp);
 }
 
 /**
@@ -329,21 +315,7 @@ static INLINE void endSlaveReplyDMA(I2CDriver *i2cp, size_t bytesRemaining)
     i2cp->slaveBytes += 0xffff - bytesRemaining;
   else
     i2cp->slaveBytes = i2cp->slaveReply->size - bytesRemaining;
-}
-
-/**
- * @brief   process slave transmit message
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static INLINE void processSlaveReply(I2CDriver *i2cp)
-{
   dmaStreamDisable(i2cp->dmatx);
-  i2cp->slaveReply->processMsg(i2cp);
-  i2cp->targetAdr = i2cInvalidAdr;
-  stopTimer(i2cp);
 }
 
 #else   /* ! HAL_USE_I2C_SLAVE */
@@ -536,17 +508,18 @@ static void lockExpired(void *i2cv) {
 
 
 /**
- * @brief   Prepare to reply to I2C queries
+ * @brief   Lock I2C bus at the beginning of the next message
  *
- * @param[in] i2cp          pointer to the @p I2CDriver object
- * @param[in] lockDuration  number ticks to hold bus locked
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] lockDuration   max number of ticks to hold bus locked
+ *                      - @a TIME_INFINITE no timeout.
+ *                      - @a TIME_IMMEDIATE unlock the bus immediately
+ *                      .
  *
  *  Lock I2C bus at the beginning of the next message sent
  *  for a maximum of lockDuration ticks.  No other I2C masters will
  *  be allowed to interrupt until i2cUnlock() is called.
  *
- * @note  a lockDuration of TIME_IMMEDIATE immediately unlocks bus
- * @note  a lockDuration of TIME_INFINITE locks the bus permanantely
  * @notapi
  **/
 void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
@@ -560,6 +533,7 @@ void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
       chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
   }
 }
+
 #endif
 
 
@@ -578,10 +552,16 @@ qEvt(0xee00 | errCode);
   I2C_TypeDef *dp = i2cp->i2c;
   if (dp->SR2 & I2C_SR2_MSL) {
 #if HAL_USE_I2C_LOCK    /* I2C bus locking support */
-    if (i2cp->lockDuration != TIME_INFINITE && !chVTIsArmedI(&i2cp->timer))
-      lockExpired(i2cp);
-    else
-      i2cp->mode = i2cIsMaster;
+    i2cp->mode = i2cIsMaster;
+    switch (i2cp->lockDuration) {
+      case TIME_INFINITE:
+        break;
+      case TIME_IMMEDIATE:
+        stopTimer(i2cp);
+      default:
+        if (!chVTIsArmedI(&i2cp->timer))
+          lockExpired(i2cp);
+    }
 #else  /* unlock the bus on any error */
     dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
     i2cp->mode = i2cIdle;
@@ -616,7 +596,9 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
   if (i2cp->mode == i2cSlaveReplying && (sr & I2C_SR1_AF)) {
 qEvt(0xcccc);
     endSlaveReplyDMA(i2cp, 1);
-    processSlaveReply(i2cp);
+    i2cp->slaveReply->processMsg(i2cp);
+    i2cp->targetAdr = i2cInvalidAdr;
+    stopTimer(i2cp);
     i2cp->mode = i2cIdle;
     return;
   }
@@ -657,17 +639,16 @@ qEvt(0xcccc);
 
 static INLINE void endMasterAction(I2CDriver *i2cp, uint32_t regCR1)
 {
-  I2C_TypeDef *dp = i2cp->i2c;
 #if HAL_USE_I2C_LOCK
-  if (chVTIsArmedI(&i2cp->timer) || i2cp->lockDuration == TIME_INFINITE) {
+  if (i2cp->lockDuration != TIME_IMMEDIATE && (
+      chVTIsArmedI(&i2cp->timer) || i2cp->lockDuration == TIME_INFINITE)) {
     i2cp->mode = i2cIsMaster;
-qEvt(0xeeee);
-  }else
-#endif
-  {
-    dp->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
-    i2cp->mode = i2cIdle;
+    return;
   }
+  stopTimer(i2cp);
+#endif
+  i2cp->i2c->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
+  i2cp->mode = i2cIdle;
 }
 
 
@@ -706,8 +687,11 @@ qEvt(0x1111);
          break;
        case i2cSlaveRxing:
          endSlaveRxDMA(i2cp);
-       case i2cLockedRxing:
-         processSlaveRx(i2cp);
+         i2cp->slaveRx->processMsg(i2cp);
+         break;
+       case i2cSlaveReplying:   /* Master did not NACK last transmitted byte */
+         endSlaveReplyDMA(i2cp, 2);
+         i2cp->slaveReply->processMsg(i2cp);
          break;
        default:
          goto invalidTransition;
@@ -725,8 +709,10 @@ qEvt(0x1111);
         dmaStreamSetTransactionSize(i2cp->dmarx, rx->size);
         dmaStreamEnable(i2cp->dmarx);
         i2cp->mode = i2cSlaveRxing;
-      }else
+      }else{
+        dp->CR2 &= ~I2C_CR2_ITEVTEN;
         i2cp->mode = i2cLockedRxing;
+      }
     }
     break;
 
@@ -737,17 +723,17 @@ qEvt(0x2222);
     switch (i2cp->mode) {
       case i2cSlaveRxing:
         endSlaveRxDMA(i2cp);
-      case i2cLockedRxing:       /* for SMBus 0-byte Quick Write Command */
-        processSlaveRx(i2cp);
+        i2cp->slaveRx->processMsg(i2cp);
         break;
-      case i2cLockedReplying:
-        endSlaveReplyDMA(i2cp, 2);  /* did not NACK last transmitted byte */
-      case i2cSlaveReplying:     /* for SMBus 0-byte Quick Read Command */
-        processSlaveReply(i2cp);
+      case i2cSlaveReplying:    /* Master did not NACK last transmitted byte */
+        endSlaveReplyDMA(i2cp, 2);
+        i2cp->slaveReply->processMsg(i2cp);
         break;
       default:
         goto invalidTransition;
     }
+    i2cp->targetAdr = i2cInvalidAdr;
+    stopTimer(i2cp);
     i2cp->mode = i2cIdle;
     break;
 
@@ -761,8 +747,7 @@ qEvt(0x3333);
           break;
         case i2cSlaveRxing:
           endSlaveRxDMA(i2cp);
-        case i2cLockedRxing:
-          processSlaveRx(i2cp);
+          i2cp->slaveRx->processMsg(i2cp);
           break;
         default:
           goto invalidTransition;
@@ -780,9 +765,10 @@ qEvt(0x3333);
         dmaStreamSetTransactionSize(i2cp->dmatx, reply->size);
         dmaStreamEnable(i2cp->dmatx);
         i2cp->mode = i2cSlaveReplying;
-        break;
+      }else{
+        dp->CR2 &= ~I2C_CR2_ITEVTEN;
+        i2cp->mode = i2cLockedReplying;
       }
-      i2cp->mode = i2cLockedReplying;
     }
     break;
 #endif  /* HAL_USE_I2C_SLAVE */
@@ -1505,6 +1491,7 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
     dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
     dmaStreamEnable(i2cp->dmarx);
     i2cp->mode = i2cSlaveRxing;
+    i2cp->i2c->CR2 |= I2C_CR2_ITEVTEN;
   }
 }
 
@@ -1534,6 +1521,7 @@ void i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
     dmaStreamSetTransactionSize(i2cp->dmatx, replyMsg->size);
     dmaStreamEnable(i2cp->dmatx);
     i2cp->mode = i2cSlaveReplying;
+    i2cp->i2c->CR2 |= I2C_CR2_ITEVTEN;
   }
 }
 
