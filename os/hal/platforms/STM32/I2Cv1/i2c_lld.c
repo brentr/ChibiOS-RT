@@ -116,7 +116,7 @@ I2CDriver I2CD3;
 #endif
 
 /* quick and dirty queue to record event interrupts */
-#define QEVENTS 0
+#define QEVENTS 32
 #if QEVENTS > 0
 uint16_t i2cQ[QEVENTS];
 unsigned i2cI = QEVENTS;
@@ -530,8 +530,8 @@ static void lockExpired(void *i2cv) {
   if (i2cp->mode == i2cIsMaster) {
     i2cp->i2c->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
     i2cp->mode = i2cIdle;
-qEvt(0xff00);
   }
+  i2cp->lockDuration = TIME_IMMEDIATE;
 }
 
 
@@ -733,6 +733,7 @@ qEvt(0x1111);
    case I2C_EV2_SLAVE_RXSTOP:
 qEvt(0x2222);
     dp->CR1 = regCR1;            /* clear STOPF */
+    i2cp->slaveErrors = I2CD_STOPPED; /* indicate that bus has been released */
     switch (i2cp->mode) {
       case i2cSlaveRxing:
         endSlaveRxDMA(i2cp);

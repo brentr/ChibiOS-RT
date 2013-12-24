@@ -59,9 +59,10 @@
                                                 reception.                  */
 #define I2CD_TIMEOUT                0x20   /**< @brief Hardware timeout.    */
 #define I2CD_SMB_ALERT              0x40   /**< @brief SMBus Alert.         */
-#define I2CD_UNKNOWN_ERROR          0x80   /**< @brief internal err         */
+#define I2CD_UNKNOWN_ERROR          0x80   /**< @brief internal error       */
 
-#define I2CD_STOPPED  (-1)                 /**< @brief  i2cStop called      */
+#define I2CD_STOPPED  ((i2cflags_t)(-1))
+                           /**< @brief stop condition or i2cStop() called   */
 /** @} */
 
 /**
