@@ -113,21 +113,26 @@ static void queueCurrentEvent(I2CDriver *i2cp, i2cEventType type)
 
 static void wakeOnRx(I2CDriver *i2cp)
 {
+  i2cp->slaveNextRx = &i2cQrx;
   queueCurrentEvent(i2cp, i2cMessage);
 }
 
 static void wakeOnQuery(I2CDriver *i2cp)
 {
+  i2cp->slaveNextReply = &i2cQreply;
   queueCurrentEvent(i2cp, i2cQuery);
 }
 
 static void wakeOnReplied(I2CDriver *i2cp)
 {
+  i2cp->slaveNextReply = &i2cQreply;
   queueCurrentEvent(i2cp, i2cReplied);
 }
 
 static void wakeOnError(I2CDriver *i2cp)
 {
+  i2cp->slaveNextRx = &i2cQrx;
+  i2cp->slaveNextReply = &i2cQreply;
   queueCurrentEvent(i2cp, i2cError);
 }
 
@@ -155,7 +160,6 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
                         uint8_t *inputBuffer, size_t size)
 {
   chDbgCheck((i2cp!=NULL && inputBuffer!=NULL && size>0), "i2cAwaitEvent");
-  const I2CSlaveMsg rx = {size, inputBuffer, ignore, wakeOnRx, wakeOnError};
   const i2cEventQ *i2cq = &((i2cEventConfig *)i2cp->config)->queue;
   i2cEventQbody *body = i2cq->body;
 
@@ -166,11 +170,11 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
 #endif
   /* dequeue last event returned */
   if (i2cQempty(body) || (i2cQdeq(body, i2cq->depth), i2cQempty(body))) {
+    const I2CSlaveMsg rx = {size, inputBuffer, ignore, wakeOnRx, wakeOnError};
     i2c_lld_slaveReceive(i2cp, &rx);  /* i2cSlaveReceive() w/o consistency ck */
     i2cp->slaveNextReply = &i2cQreply;
     body->thread = chThdSelf();
     chSchGoSleepS(THD_STATE_SUSPENDED);
-    i2cp->slaveNextRx = &i2cQrx;
   }
   i2cQindex oldest = body->oldest;
   chSysUnlock();
@@ -202,8 +206,6 @@ const i2cEvent *i2cAnswer(I2CDriver *i2cp,
                       const uint8_t *replyBuffer, size_t size)
 {
   chDbgCheck((i2cp!=NULL && replyBuffer!=NULL && size>0), "i2cAnswer");
-  const I2CSlaveMsg answer =
-    {size, (uint8_t *)replyBuffer, wakeOnQuery, wakeOnReplied, wakeOnError};
   const i2cEventQ *i2cq = &((i2cEventConfig *)i2cp->config)->queue;
   i2cEventQbody *body = i2cq->body;
 
@@ -214,10 +216,11 @@ const i2cEvent *i2cAnswer(I2CDriver *i2cp,
 #endif
   /* dequeue last event returned */
   if (i2cQempty(body) || (i2cQdeq(body, i2cq->depth), i2cQempty(body))) {
+    const I2CSlaveMsg answer =
+      {size, (uint8_t *)replyBuffer, wakeOnQuery, wakeOnReplied, wakeOnError};
     i2c_lld_slaveReply(i2cp, &answer);  /* i2cSlaveReply() w/o consistency ck */
     body->thread = chThdSelf();
     chSchGoSleepS(THD_STATE_SUSPENDED);
-    i2cp->slaveNextReply = &i2cQreply;
   }
   i2cQindex oldest = body->oldest;
   chSysUnlock();
