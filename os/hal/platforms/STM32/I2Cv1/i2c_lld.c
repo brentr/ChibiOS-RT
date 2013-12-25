@@ -570,14 +570,15 @@ qEvt(0xee00 | errCode);
         }
     }
 #else  /* unlock the bus on any error */
-    dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
-    i2cp->mode = i2cIdle;
+    i2cAbortOperation(i2cp);
     stopTimer(i2cp);
+    i2cp->mode = i2cIdle;
 #endif
   }
 #if HAL_USE_I2C_SLAVE
   else if (i2cp->mode > i2cIdle && i2cp->mode < i2cIsMaster) {
     i2cp->slaveErrors = errCode;
+    i2cAbortOperation(i2cp);
     stopTimer(i2cp);
     reportSlaveError(i2cp);
     return;
@@ -600,7 +601,7 @@ qEvt(0xee00 | errCode);
 static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
 #if HAL_USE_I2C_SLAVE
 /* NACK of last byte transmitted in slave response is NORMAL -- not an error! */
-  if (i2cp->mode == i2cSlaveReplying && (sr & I2C_SR1_AF)) {
+  if (i2cp->mode == i2cSlaveReplying && (sr & I2C_ERROR_MASK) == I2C_SR1_AF) {
 qEvt(0xcccc);
     endSlaveReplyDMA(i2cp, 1);
     i2cp->slaveReply->processMsg(i2cp);
@@ -612,11 +613,11 @@ qEvt(0xcccc);
 #endif
   i2cflags_t errs = 0;
 
+  if (sr & I2C_SR1_BERR)                            /* Bus error.           */
+    errs = I2CD_BUS_ERROR;
+
   if (sr & I2C_SR1_ARLO)                            /* Arbitration lost.    */
     errs |= I2CD_ARBITRATION_LOST;
-
-  if (sr & I2C_SR1_BERR)                            /* Bus error.           */
-    errs |= I2CD_BUS_ERROR;
 
   if (sr & I2C_SR1_AF)                              /* Acknowledge fail.    */
     errs |= I2CD_ACK_FAILURE;
