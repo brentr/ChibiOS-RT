@@ -492,12 +492,13 @@ struct I2CDriver {
   enum i2cMode {
     i2cIdle=1,          /* awaiting address or inactive */
     i2cSlaveRxing,      /* receiving message */
-    i2cLockedRxing,     /* stretching clock while receiving message */
+    i2cLockedRxing,     /* stretching clock before receiving message */
     i2cSlaveReplying,   /* replying to query */
-    i2cLockedReplying,  /* stretching clock while replying to query */
+    i2cLockedReplying,  /* stretching clock before replying to query */
 
     i2cIsMaster=0x11,   /* sent start bit (mastering bus) */
-    i2cMasterSentAdr,   /* sent slave address */
+    i2cMasterStarted,   /* repeated start after write */
+    i2cMasterSelecting, /* sending slave address */
     i2cMasterRxing,     /* receiving reply from slave */
     i2cMasterTxing      /* sending message to slave */
     }  mode;

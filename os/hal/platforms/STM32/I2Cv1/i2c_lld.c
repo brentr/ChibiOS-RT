@@ -201,6 +201,25 @@ static void i2cAbortOperation(I2CDriver *i2cp) {
                                   ;
 }
 
+
+#if HAL_USE_I2C_SLAVE || HAL_USE_I2C_LOCK
+/**
+ * @brief   stop transaction timeout countdown
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static INLINE void stopTimer(I2CDriver *i2cp)
+{
+  if (chVTIsArmedI(&i2cp->timer))
+    chVTResetI(&i2cp->timer);
+}
+#else
+#define stopTimer(ignored)  {}
+#endif
+
+
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
 
 /**
@@ -254,19 +273,6 @@ static void slaveTimeExpired(void *i2cv) {
 
 
 /**
- * @brief   stop transaction timeout countdown
- *
- * @param[in] i2cp      pointer to the @p I2CDriver object
- *
- * @notapi
- */
-static INLINE void stopTimer(I2CDriver *i2cp)
-{
-  if (chVTIsArmedI(&i2cp->timer))
-    chVTResetI(&i2cp->timer);
-}
-
-/**
  * @brief   start or restart slave mode transaction
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
@@ -318,8 +324,6 @@ static INLINE void endSlaveReplyDMA(I2CDriver *i2cp, size_t bytesRemaining)
   dmaStreamDisable(i2cp->dmatx);
 }
 
-#else   /* ! HAL_USE_I2C_SLAVE */
-#define stopTimer(ignored)  {}
 #endif
 
 
@@ -499,7 +503,7 @@ static void i2c_lld_safety_timeout(void *p) {
 static void lockExpired(void *i2cv) {
   I2CDriver *i2cp = i2cv;
 
-  if (i2cp->mode == i2cIsMaster) {
+  if (i2cp->mode == i2cIsMaster && !i2cp->thread) {  /* between transactions */
     i2cp->i2c->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
     i2cp->mode = i2cIdle;
   }
@@ -559,8 +563,11 @@ qEvt(0xee00 | errCode);
       case TIME_IMMEDIATE:
         stopTimer(i2cp);
       default:
-        if (!chVTIsArmedI(&i2cp->timer))
-          lockExpired(i2cp);
+        if (!chVTIsArmedI(&i2cp->timer)) {
+          i2cp->i2c->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
+          i2cp->mode = i2cIdle;
+          i2cp->lockDuration = TIME_IMMEDIATE;
+        }
     }
 #else  /* unlock the bus on any error */
     dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
@@ -775,11 +782,9 @@ qEvt(0x3333);
 
    case I2C_EV5_MASTER_MODE_SELECT:
 qEvt(0x5555);
-    if (i2cp->mode == i2cIsMaster)
-      dp->DR = i2cp->addr;
-    else{
-      chkTransition(i2cIdle);
-      dp->DR = i2cp->addr;
+    dp->DR = i2cp->addr;
+    switch (i2cp->mode) {
+      case i2cIdle:
 #if HAL_USE_I2C_LOCK
       {
         systime_t lockDuration = i2cp->lockDuration;
@@ -787,13 +792,19 @@ qEvt(0x5555);
           chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
       }
 #endif
+        break;
+      case i2cIsMaster:
+      case i2cMasterStarted:
+        break;
+      default:
+        goto invalidTransition;
     }
-    i2cp->mode = i2cMasterSentAdr;
+    i2cp->mode = i2cMasterSelecting;
     break;
 
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
 qEvt(0x6666);
-    chkTransition(i2cMasterSentAdr);
+    chkTransition(i2cMasterSelecting);
     if (!i2cp->masterRxbytes) {  /* 0-length SMBus style quick read */
       endMasterAction(i2cp, regCR1);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
@@ -815,7 +826,7 @@ qEvt(0x6666);
    case I2C_EV6_MASTER_TRA_MODE_SELECTED:
 qEvt(0x7777);
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
-    chkTransition(i2cMasterSentAdr);
+    chkTransition(i2cMasterSelecting);
     switch (i2cp->masterTxbytes) {
       case 0:
         goto doneWriting;
@@ -846,7 +857,7 @@ doneWriting:
       /* Starts "read after write" operation, LSB = 1 -> receive.*/
       dp->CR1 = regCR1 | I2C_CR1_START | I2C_CR1_ACK;
       i2cp->addr |= 1;
-      i2cp->mode = i2cIsMaster;
+      i2cp->mode = i2cMasterStarted;
     }else{
       endMasterAction(i2cp, regCR1);
       wakeup_isr(i2cp, I2C_OK);
@@ -1494,10 +1505,11 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
   chDbgCheck((rxMsg && rxMsg->size <= 0xffff), "i2c_lld_slaveReceive");
   i2cp->slaveNextRx = rxMsg;
   if (i2cp->mode == i2cLockedRxing && rxMsg->body && rxMsg->size) {
+    /* We can receive now! */
     I2C_TypeDef *dp = i2cp->i2c;
     (void)dp->SR1, dp->SR2;  /* clear I2C_SR1_ADDR */
     i2cp->slaveRx = rxMsg;
-    /* slave RX DMA setup -- we can receive now! */
+    /* slave RX DMA setup */
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
     dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
     dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
