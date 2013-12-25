@@ -95,6 +95,8 @@ static void queueCurrentEvent(I2CDriver *i2cp, i2cEventType type)
     next->flags = i2c_lld_get_slaveErrors(i2cp);
     next->bytes = i2c_lld_get_slaveBytes(i2cp);
   }
+  i2cp->slaveNextRx = &i2cQrx;
+  i2cp->slaveNextReply = &i2cQreply;
   chSysLockFromIsr();
   Thread *tp = body->thread;
   if (tp != NULL) {
@@ -107,26 +109,21 @@ static void queueCurrentEvent(I2CDriver *i2cp, i2cEventType type)
 
 static void wakeOnRx(I2CDriver *i2cp)
 {
-  i2cp->slaveNextRx = &i2cQrx;
   queueCurrentEvent(i2cp, i2cMessage);
 }
 
 static void wakeOnQuery(I2CDriver *i2cp)
 {
-  i2cp->slaveNextReply = &i2cQreply;
   queueCurrentEvent(i2cp, i2cQuery);
 }
 
 static void wakeOnReplied(I2CDriver *i2cp)
 {
-  i2cp->slaveNextReply = &i2cQreply;
   queueCurrentEvent(i2cp, i2cReplied);
 }
 
 static void wakeOnError(I2CDriver *i2cp)
 {
-  i2cp->slaveNextRx = &i2cQrx;
-  i2cp->slaveNextReply = &i2cQreply;
   queueCurrentEvent(i2cp, i2cError);
 }
 
