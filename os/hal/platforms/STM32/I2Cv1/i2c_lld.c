@@ -477,9 +477,9 @@ static void i2c_lld_safety_timeout(void *p) {
   I2CDriver *i2cp = p;
 
   stopTimer(i2cp);
-#if HAL_USE_I2C_SLAVE
+#if HAL_USE_I2C_SLAVE             /* abort any slave operation in progress */
   if (!(i2cp->i2c->SR2 & I2C_SR2_MSL))
-    slaveTimeExpired(i2cp);
+    slaveTimeExpired(i2cp);  /* in case slave preventing master bus access */
   else
 #endif
   {
@@ -553,7 +553,9 @@ static void reportErrs(I2CDriver *i2cp, i2cflags_t errCode)
 {
 qEvt(0xee00 | errCode);
   I2C_TypeDef *dp = i2cp->i2c;
-  if (dp->SR2 & I2C_SR2_MSL) {
+  if (i2cp->mode <= i2cIdle)  /* failing to master bus */
+    i2cAbortOperation(i2cp);
+  else if (dp->SR2 & I2C_SR2_MSL) {
 #if HAL_USE_I2C_LOCK    /* I2C bus locking support */
     i2cp->mode = i2cIsMaster;
     switch (i2cp->lockDuration) {
@@ -563,19 +565,18 @@ qEvt(0xee00 | errCode);
         stopTimer(i2cp);
       default:
         if (!chVTIsArmedI(&i2cp->timer)) {
-          i2cp->i2c->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
+          dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
           i2cp->mode = i2cIdle;
           i2cp->lockDuration = TIME_IMMEDIATE;
         }
     }
-#else  /* unlock the bus on any error */
-    i2cAbortOperation(i2cp);
-    stopTimer(i2cp);
+#else  /* signal stop condition on any error */
+    dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
     i2cp->mode = i2cIdle;
 #endif
   }
 #if HAL_USE_I2C_SLAVE
-  else if (i2cp->mode > i2cIdle && i2cp->mode < i2cIsMaster) {
+  else if (i2cp->mode < i2cIsMaster) {
     i2cp->slaveErrors = errCode;
     i2cAbortOperation(i2cp);
     stopTimer(i2cp);
