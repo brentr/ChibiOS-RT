@@ -1516,7 +1516,7 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
     dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
     dmaStreamEnable(i2cp->dmarx);
     i2cp->mode = i2cSlaveRxing;
-    i2cp->i2c->CR2 |= I2C_CR2_ITEVTEN;
+    dp->CR2 |= I2C_CR2_ITEVTEN;
   }
 }
 
