@@ -681,7 +681,6 @@ static void i2c_lld_serve_event_interrupt(I2CDriver *i2cp)
 qEvt(0x1111);
    {
      i2caddr_t targetAdr = matchedAdr(dp, regSR2);
-     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
      switch (i2cp->mode) {
        case i2cIdle:
          break;
@@ -703,6 +702,7 @@ qEvt(0x1111);
       rx->adrMatched(i2cp);
       rx = i2cp->slaveRx = i2cp->slaveNextRx;
       if (rx->body && rx->size) {
+        (void)dp->SR2;  /* clear I2C_SR1_ADDR */
          /* slave RX DMA setup.*/
         dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
         dmaStreamSetMemory0(i2cp->dmarx, rx->body);
@@ -780,7 +780,6 @@ qEvt(0x5555);
     else{
       chkTransition(i2cIdle);
       dp->DR = i2cp->addr;
-      i2cp->mode = i2cIsMaster;
 #if HAL_USE_I2C_LOCK
       {
         systime_t lockDuration = i2cp->lockDuration;
@@ -789,11 +788,12 @@ qEvt(0x5555);
       }
 #endif
     }
+    i2cp->mode = i2cMasterSentAdr;
     break;
 
    case I2C_EV6_MASTER_REC_MODE_SELECTED:
 qEvt(0x6666);
-    chkTransition(i2cIsMaster);
+    chkTransition(i2cMasterSentAdr);
     if (!i2cp->masterRxbytes) {  /* 0-length SMBus style quick read */
       endMasterAction(i2cp, regCR1);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
@@ -815,14 +815,24 @@ qEvt(0x6666);
    case I2C_EV6_MASTER_TRA_MODE_SELECTED:
 qEvt(0x7777);
     (void)dp->SR2;  /* clear I2C_SR1_ADDR */
-    chkTransition(i2cIsMaster);
-    if (!i2cp->masterTxbytes)
-      goto doneWriting;
-    /* TX DMA setup.*/
-    dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
-    dmaStreamSetMemory0(i2cp->dmatx, i2cp->masterTxbuf);
-    dmaStreamSetTransactionSize(i2cp->dmatx, i2cp->masterTxbytes);
-    dmaStreamEnable(i2cp->dmatx);
+    chkTransition(i2cMasterSentAdr);
+    switch (i2cp->masterTxbytes) {
+      case 0:
+        goto doneWriting;
+      case 1:
+        dp->DR = i2cp->masterTxbuf[0];
+        break;
+      case 2:
+        dp->DR = i2cp->masterTxbuf[0];
+        dp->DR = i2cp->masterTxbuf[1];
+        break;
+      default:
+        /* TX DMA setup.*/
+        dmaStreamSetMode(i2cp->dmatx, i2cp->txdmamode);
+        dmaStreamSetMemory0(i2cp->dmatx, i2cp->masterTxbuf);
+        dmaStreamSetTransactionSize(i2cp->dmatx, i2cp->masterTxbytes);
+        dmaStreamEnable(i2cp->dmatx);
+    }
     i2cp->mode = i2cMasterTxing;
     break;
 
@@ -1484,6 +1494,8 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
   chDbgCheck((rxMsg && rxMsg->size <= 0xffff), "i2c_lld_slaveReceive");
   i2cp->slaveNextRx = rxMsg;
   if (i2cp->mode == i2cLockedRxing && rxMsg->body && rxMsg->size) {
+    I2C_TypeDef *dp = i2cp->i2c;
+    (void)dp->SR1, dp->SR2;  /* clear I2C_SR1_ADDR */
     i2cp->slaveRx = rxMsg;
     /* slave RX DMA setup -- we can receive now! */
     dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);

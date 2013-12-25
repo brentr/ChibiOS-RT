@@ -497,6 +497,7 @@ struct I2CDriver {
     i2cLockedReplying,  /* stretching clock while replying to query */
 
     i2cIsMaster=0x11,   /* sent start bit (mastering bus) */
+    i2cMasterSentAdr,   /* sent slave address */
     i2cMasterRxing,     /* receiving reply from slave */
     i2cMasterTxing      /* sending message to slave */
     }  mode;
