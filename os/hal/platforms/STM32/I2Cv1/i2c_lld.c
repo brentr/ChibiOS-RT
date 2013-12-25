@@ -196,7 +196,6 @@ static void i2cAbortOperation(I2CDriver *i2cp) {
   dp->CR1 = I2C_CR1_ACK | I2C_CR1_PE | (cr1 & (I2C_CR1_SMBUS | I2C_CR1_SMBTYPE))
 #if HAL_USE_I2C_SLAVE
             | (cr1 & I2C_CR1_ENGC);
-  i2cp->targetAdr = i2cInvalidAdr
 #endif
                                   ;
 }
