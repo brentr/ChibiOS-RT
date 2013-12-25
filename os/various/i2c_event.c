@@ -27,12 +27,6 @@
    (The end of the previous followed by the begin of the current message)
    Therefore, the depth of the event queue for STM32 I2C interfaces must
    be at least two.
-
-   In general, if your slave must respond to 0-byte SMBbus style quick
-   writes, increase the queue depth by 2 or more, as a master sending these
-   will not be slowed by stretching the I2C clock.  The number of SMBus quick
-   writes that must be queued is a roughly proportional to the I2C clock rate
-   times the maximum latency of the event processing thread.
 */
 
 #include "i2c_event.h"
