@@ -250,9 +250,12 @@ static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
 static INLINE void reportSlaveError(I2CDriver *i2cp) {
   const I2CSlaveMsg *xfer = i2cp->mode >= i2cSlaveReplying ?
                                           i2cp->slaveReply : i2cp->slaveRx;
-  i2cp->mode = i2cIdle;
   xfer->exception(i2cp);  /* in this case, i2cp->slaveErrors == 0 */
+  i2cp->mode = i2cIdle;
   i2cp->targetAdr = i2cInvalidAdr;
+#if HAL_USE_I2C_STARTFIX
+  i2cp->config->disarmStartDetect();
+#endif
 }
 
 
@@ -608,6 +611,9 @@ qEvt(0xcccc);
     i2cp->targetAdr = i2cInvalidAdr;
     stopTimer(i2cp);
     i2cp->mode = i2cIdle;
+#if HAL_USE_I2C_STARTFIX
+    i2cp->config->disarmStartDetect();
+#endif
     return;
   }
 #endif
@@ -691,6 +697,9 @@ qEvt(0x1111);
      i2caddr_t targetAdr = matchedAdr(dp, regSR2);
      switch (i2cp->mode) {
        case i2cIdle:
+#if HAL_USE_I2C_STARTFIX
+         i2cp->config->armStartDetect();
+#endif
          break;
        case i2cSlaveRxing:
          endSlaveRxDMA(i2cp);
@@ -743,6 +752,9 @@ qEvt(0x2222);
     i2cp->targetAdr = i2cInvalidAdr;
     stopTimer(i2cp);
     i2cp->mode = i2cIdle;
+#if HAL_USE_I2C_STARTFIX
+    i2cp->config->disarmStartDetect();
+#endif
     break;
 
    case I2C_EV1_SLAVE_TXADRMATCH:
@@ -752,6 +764,9 @@ qEvt(0x3333);
       (void)dp->SR2;  /* clear I2C_SR1_ADDR */
       switch (i2cp->mode) {
         case i2cIdle:
+#if HAL_USE_I2C_STARTFIX
+          i2cp->config->armStartDetect();
+#endif
           break;
         case i2cSlaveRxing:
           endSlaveRxDMA(i2cp);
@@ -871,6 +886,54 @@ qEvt(0x9999);
     i2c_lld_serve_error_interrupt(i2cp, event);
   }
 }
+
+
+#if HAL_USE_I2C_STARTFIX
+/**
+ * @brief   external device detected start condition
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @details invoked from ISR if a START CONDITION detected during the time
+ *          the startDetector is armed.
+ *          This is a workaround for the STM32's lack of a repeated start event
+ *
+ * @notapi
+ */
+void  i2c_lld_startDetected(I2CDriver *i2cp)
+{
+qEvt(0xdddd);
+  switch (i2cp->mode) {
+    case i2cSlaveRxing:
+      endSlaveRxDMA(i2cp);
+      i2cp->slaveRx->processMsg(i2cp);
+      break;
+    case i2cSlaveReplying:    /* Master did not NACK last transmitted byte */
+      endSlaveReplyDMA(i2cp, 2);
+      i2cp->slaveReply->processMsg(i2cp);
+      break;
+    default:
+      i2cAbortOperation(i2cp);        /* reset and reinit */
+      reportErrs(i2cp, I2CD_UNKNOWN_ERROR + i2cp->mode);
+      return;
+  }
+  i2cp->targetAdr = i2cInvalidAdr;
+  stopTimer(i2cp);
+  i2cp->mode = i2cIdle;
+}
+
+/**
+ * @brief   dummy placeholder for armStartDetector() and disarmStartDetector()
+ *
+ * @details *MUST* be placed in the configuration struct in cases where
+ *          HAL_USE_I2C_STARTFIX is configured and no startDetector is defined,
+ *          otherwise NULL pointers will be called for these functions!
+ *
+ * @notapi
+ */
+void  i2c_lld_noStartDetector(void) {}
+#endif
+
 
 /**
  * @brief   DMA RX end IRQ handler.

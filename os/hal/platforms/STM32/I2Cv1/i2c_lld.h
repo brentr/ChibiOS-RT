@@ -338,6 +338,11 @@ typedef enum {
 } i2cdutycycle_t;
 
 /**
+ * @brief   Type of a structure representing an I2C driver.
+ */
+typedef struct I2CDriver I2CDriver;
+
+/**
  * @brief Driver configuration structure.
  */
 typedef struct {
@@ -347,12 +352,11 @@ typedef struct {
                                       than 400kHz.                          */
   i2cdutycycle_t  duty_cycle;    /**< @brief Specifies the I2C fast mode
                                       duty cycle.                           */
+#if HAL_USE_I2C_STARTFIX && HAL_USE_I2C_SLAVE
+  void (*armStartDetect)(void);   /**< @brief Arm Start Condition Detector    */
+  void (*disarmStartDetect)(void);/**< @brief Disarm Start Condition Detector */
+#endif
 } I2CConfig;
-
-/**
- * @brief   Type of a structure representing an I2C driver.
- */
-typedef struct I2CDriver I2CDriver;
 
 
 #if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
@@ -687,6 +691,11 @@ extern "C" {
   void  i2c_lld_unmatchAll(I2CDriver *i2cp);
   void  i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
   void  i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
+#if HAL_USE_I2C_STARTFIX
+  void  i2c_lld_startDetected(I2CDriver *i2cp);
+  void  i2c_lld_noStartDetector(void);
+#define i2cNoStartDetector  i2c_lld_noStartDetector
+#endif
 #endif /* HAL_USE_I2C_SLAVE */
 
 #ifdef __cplusplus
