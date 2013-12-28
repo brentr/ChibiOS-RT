@@ -141,7 +141,7 @@ static INLINE
  * @return              pointer to i2cEvent struct
  *
  * @details The returned pointer remains valid only until the next
- *          call to this function or slaveAnswer() described below.
+ *          call to this function or i2cAnswer() described below.
  *
  * @api
  **/
