@@ -96,12 +96,21 @@
 #endif
 
 /**
- * @brief   ICUD9 driver enable switch.
- * @details If set to @p TRUE the support for ICUD9 is included.
+ * @brief   ICUD10 driver enable switch.
+ * @details If set to @p TRUE the support for ICUD10 is included.
  * @note    The default is @p TRUE.
  */
-#if !defined(STM32_ICU_USE_TIM9) || defined(__DOXYGEN__)
-#define STM32_ICU_USE_TIM9                  FALSE
+#if !defined(STM32_ICU_USE_TIM10) || defined(__DOXYGEN__)
+#define STM32_ICU_USE_TIM10                  FALSE
+#endif
+
+/**
+ * @brief   ICUD11 driver enable switch.
+ * @details If set to @p TRUE the support for ICUD11 is included.
+ * @note    The default is @p TRUE.
+ */
+#if !defined(STM32_ICU_USE_TIM11) || defined(__DOXYGEN__)
+#define STM32_ICU_USE_TIM11                  FALSE
 #endif
 
 /**
@@ -154,6 +163,22 @@
 #endif
 /** @} */
 
+/**
+ * @brief   ICUD10 interrupt priority level setting.
+ */
+#if !defined(STM32_ICU_TIM10_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define STM32_ICU_TIM10_IRQ_PRIORITY         7
+#endif
+/** @} */
+
+/**
+ * @brief   ICUD11 interrupt priority level setting.
+ */
+#if !defined(STM32_ICU_TIM11_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define STM32_ICU_TIM11_IRQ_PRIORITY         7
+#endif
+/** @} */
+
 /*===========================================================================*/
 /* Derived constants and error checks.                                       */
 /*===========================================================================*/
@@ -189,7 +214,7 @@
 #if !STM32_ICU_USE_TIM1 && !STM32_ICU_USE_TIM2 &&                           \
     !STM32_ICU_USE_TIM3 && !STM32_ICU_USE_TIM4 &&                           \
     !STM32_ICU_USE_TIM5 && !STM32_ICU_USE_TIM8 &&                           \
-    !STM32_ICU_USE_TIM9
+    !STM32_ICU_USE_TIM9 && !STM32_ICU_USE_TIM10 && !STM32_ICU_USE_TIM11
 #error "ICU driver activated but no TIM peripheral assigned"
 #endif
 
@@ -226,6 +251,16 @@
 #if STM32_ICU_USE_TIM9 &&                                                   \
     !CORTEX_IS_VALID_KERNEL_PRIORITY(STM32_ICU_TIM9_IRQ_PRIORITY)
 #error "Invalid IRQ priority assigned to TIM9"
+#endif
+
+#if STM32_ICU_USE_TIM10 &&                                                   \
+    !CORTEX_IS_VALID_KERNEL_PRIORITY(STM32_ICU_TIM10_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to TIM10"
+#endif
+
+#if STM32_ICU_USE_TIM11 &&                                                   \
+    !CORTEX_IS_VALID_KERNEL_PRIORITY(STM32_ICU_TIM11_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to TIM11"
 #endif
 
 /*===========================================================================*/
@@ -391,6 +426,14 @@ extern ICUDriver ICUD8;
 
 #if STM32_ICU_USE_TIM9 && !defined(__DOXYGEN__)
 extern ICUDriver ICUD9;
+#endif
+
+#if STM32_ICU_USE_TIM10 && !defined(__DOXYGEN__)
+extern ICUDriver ICUD10;
+#endif
+
+#if STM32_ICU_USE_TIM11 && !defined(__DOXYGEN__)
+extern ICUDriver ICUD11;
 #endif
 
 #ifdef __cplusplus

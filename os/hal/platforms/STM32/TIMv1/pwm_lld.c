@@ -91,6 +91,22 @@ PWMDriver PWMD8;
 PWMDriver PWMD9;
 #endif
 
+/**
+ * @brief   PWMD10 driver identifier.
+ * @note    The driver PWMD10 allocates the timer TIM10 when enabled.
+ */
+#if STM32_PWM_USE_TIM10 || defined(__DOXYGEN__)
+PWMDriver PWMD10;
+#endif
+
+/**
+ * @brief   PWMD11 driver identifier.
+ * @note    The driver PWMD11 allocates the timer TIM11 when enabled.
+ */
+#if STM32_PWM_USE_TIM11 || defined(__DOXYGEN__)
+PWMDriver PWMD11;
+#endif
+
 /*===========================================================================*/
 /* Driver local variables and types.                                         */
 /*===========================================================================*/
@@ -100,9 +116,10 @@ PWMDriver PWMD9;
 /*===========================================================================*/
 
 #if STM32_PWM_USE_TIM2 || STM32_PWM_USE_TIM3 || STM32_PWM_USE_TIM4 ||       \
-    STM32_PWM_USE_TIM5 || STM32_PWM_USE_TIM9 || defined(__DOXYGEN__)
+    STM32_PWM_USE_TIM5 || STM32_PWM_USE_TIM9 ||                             \
+    STM32_PWM_USE_TIM10 || STM32_PWM_USE_TIM11 || defined(__DOXYGEN__)
 /**
- * @brief   Common TIM2...TIM5,TIM9 IRQ handler.
+ * @brief   Common TIM2...TIM5,TIM9-11 IRQ handler.
  * @note    It is assumed that the various sources are only activated if the
  *          associated callback pointer is not equal to @p NULL in order to not
  *          perform an extra check in a potentially critical interrupt handler.
@@ -333,6 +350,45 @@ CH_IRQ_HANDLER(STM32_TIM9_HANDLER) {
 }
 #endif /* STM32_PWM_USE_TIM9 */
 
+#if STM32_PWM_USE_TIM10
+#if !defined(STM32_TIM10_HANDLER)
+#error "STM32_TIM10_HANDLER not defined"
+#endif
+/**
+ * @brief   TIM10 interrupt handler.
+ *
+ * @isr
+ */
+CH_IRQ_HANDLER(STM32_TIM10_HANDLER) {
+
+  CH_IRQ_PROLOGUE();
+
+  pwm_lld_serve_interrupt(&PWMD10);
+
+  CH_IRQ_EPILOGUE();
+}
+#endif /* STM32_PWM_USE_TIM10 */
+
+#if STM32_PWM_USE_TIM11
+#if !defined(STM32_TIM11_HANDLER)
+#error "STM32_TIM11_HANDLER not defined"
+#endif
+/**
+ * @brief   TIM11 interrupt handler.
+ *
+ * @isr
+ */
+CH_IRQ_HANDLER(STM32_TIM11_HANDLER) {
+
+  CH_IRQ_PROLOGUE();
+
+  pwm_lld_serve_interrupt(&PWMD11);
+
+  CH_IRQ_EPILOGUE();
+}
+#endif /* STM32_PWM_USE_TIM11 */
+
+
 /*===========================================================================*/
 /* Driver exported functions.                                                */
 /*===========================================================================*/
@@ -384,6 +440,18 @@ void pwm_lld_init(void) {
   /* Driver initialization.*/
   pwmObjectInit(&PWMD9);
   PWMD9.tim = STM32_TIM9;
+#endif
+
+#if STM32_PWM_USE_TIM10
+  /* Driver initialization.*/
+  pwmObjectInit(&PWMD10);
+  PWMD9.tim = STM32_TIM10;
+#endif
+
+#if STM32_PWM_USE_TIM11
+  /* Driver initialization.*/
+  pwmObjectInit(&PWMD11);
+  PWMD11.tim = STM32_TIM11;
 #endif
 }
 
@@ -467,7 +535,25 @@ void pwm_lld_start(PWMDriver *pwmp) {
       rccResetTIM9();
       nvicEnableVector(STM32_TIM9_NUMBER,
                        CORTEX_PRIORITY_MASK(STM32_PWM_TIM9_IRQ_PRIORITY));
-      pwmp->clock = STM32_TIMCLK1;
+      pwmp->clock = STM32_TIMCLK2;
+    }
+#endif
+#if STM32_PWM_USE_TIM10
+    if (&PWMD10 == pwmp) {
+      rccEnableTIM10(FALSE);
+      rccResetTIM10();
+      nvicEnableVector(STM32_TIM10_NUMBER,
+                       CORTEX_PRIORITY_MASK(STM32_PWM_TIM10_IRQ_PRIORITY));
+      pwmp->clock = STM32_TIMCLK2;
+    }
+#endif
+#if STM32_PWM_USE_TIM11
+    if (&PWMD11 == pwmp) {
+      rccEnableTIM11(FALSE);
+      rccResetTIM11();
+      nvicEnableVector(STM32_TIM11_NUMBER,
+                       CORTEX_PRIORITY_MASK(STM32_PWM_TIM11_IRQ_PRIORITY));
+      pwmp->clock = STM32_TIMCLK2;
     }
 #endif
 
@@ -647,6 +733,18 @@ void pwm_lld_stop(PWMDriver *pwmp) {
     if (&PWMD9 == pwmp) {
       nvicDisableVector(STM32_TIM9_NUMBER);
       rccDisableTIM9(FALSE);
+    }
+#endif
+#if STM32_PWM_USE_TIM10
+    if (&PWMD10 == pwmp) {
+      nvicDisableVector(STM32_TIM10_NUMBER);
+      rccDisableTIM10(FALSE);
+    }
+#endif
+#if STM32_PWM_USE_TIM11
+    if (&PWMD11 == pwmp) {
+      nvicDisableVector(STM32_TIM11_NUMBER);
+      rccDisableTIM11(FALSE);
     }
 #endif
   }

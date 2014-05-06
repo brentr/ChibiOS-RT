@@ -327,6 +327,51 @@ CH_IRQ_HANDLER(STM32_TIM9_HANDLER) {
 }
 #endif /* STM32_ICU_USE_TIM9 */
 
+#if STM32_ICU_USE_TIM10
+#if !defined(STM32_TIM10_HANDLER)
+#error "STM32_TIM10_HANDLER not defined"
+#endif
+/**
+ * @brief   TIM9 interrupt handler.
+ * @note    It is assumed that the various sources are only activated if the
+ *          associated callback pointer is not equal to @p NULL in order to not
+ *          perform an extra check in a potentially critical interrupt handler.
+ *
+ * @isr
+ */
+CH_IRQ_HANDLER(STM32_TIM10_HANDLER) {
+
+  CH_IRQ_PROLOGUE();
+
+  icu_lld_serve_interrupt(&ICUD10);
+
+  CH_IRQ_EPILOGUE();
+}
+#endif /* STM32_ICU_USE_TIM10 */
+
+#if STM32_ICU_USE_TIM11
+#if !defined(STM32_TIM11_HANDLER)
+#error "STM32_TIM11_HANDLER not defined"
+#endif
+/**
+ * @brief   TIM11 interrupt handler.
+ * @note    It is assumed that the various sources are only activated if the
+ *          associated callback pointer is not equal to @p NULL in order to not
+ *          perform an extra check in a potentially critical interrupt handler.
+ *
+ * @isr
+ */
+CH_IRQ_HANDLER(STM32_TIM11_HANDLER) {
+
+  CH_IRQ_PROLOGUE();
+
+  icu_lld_serve_interrupt(&ICUD11);
+
+  CH_IRQ_EPILOGUE();
+}
+#endif /* STM32_ICU_USE_TIM11 */
+
+
 /*===========================================================================*/
 /* Driver exported functions.                                                */
 /*===========================================================================*/
@@ -378,6 +423,18 @@ void icu_lld_init(void) {
   /* Driver initialization.*/
   icuObjectInit(&ICUD9);
   ICUD9.tim = STM32_TIM9;
+#endif
+
+#if STM32_ICU_USE_TIM10
+  /* Driver initialization.*/
+  icuObjectInit(&ICUD10);
+  ICUD10.tim = STM32_TIM10;
+#endif
+
+#if STM32_ICU_USE_TIM11
+  /* Driver initialization.*/
+  icuObjectInit(&ICUD11);
+  ICUD11.tim = STM32_TIM11;
 #endif
 }
 
@@ -461,7 +518,25 @@ void icu_lld_start(ICUDriver *icup) {
       rccResetTIM9();
       nvicEnableVector(STM32_TIM9_NUMBER,
                        CORTEX_PRIORITY_MASK(STM32_ICU_TIM9_IRQ_PRIORITY));
-      icup->clock = STM32_TIMCLK1;
+      icup->clock = STM32_TIMCLK2;
+    }
+#endif
+#if STM32_ICU_USE_TIM10
+    if (&ICUD10 == icup) {
+      rccEnableTIM10(FALSE);
+      rccResetTIM10();
+      nvicEnableVector(STM32_TIM10_NUMBER,
+                       CORTEX_PRIORITY_MASK(STM32_ICU_TIM10_IRQ_PRIORITY));
+      icup->clock = STM32_TIMCLK2;
+    }
+#endif
+#if STM32_ICU_USE_TIM11
+    if (&ICUD11 == icup) {
+      rccEnableTIM11(FALSE);
+      rccResetTIM11();
+      nvicEnableVector(STM32_TIM11_NUMBER,
+                       CORTEX_PRIORITY_MASK(STM32_ICU_TIM11_IRQ_PRIORITY));
+      icup->clock = STM32_TIMCLK2;
     }
 #endif
   }
@@ -592,6 +667,18 @@ void icu_lld_stop(ICUDriver *icup) {
     if (&ICUD9 == icup) {
       nvicDisableVector(STM32_TIM9_NUMBER);
       rccDisableTIM9(FALSE);
+    }
+#endif
+#if STM32_ICU_USE_TIM10
+    if (&ICUD10 == icup) {
+      nvicDisableVector(STM32_TIM10_NUMBER);
+      rccDisableTIM10(FALSE);
+    }
+#endif
+#if STM32_ICU_USE_TIM11
+    if (&ICUD11 == icup) {
+      nvicDisableVector(STM32_TIM11_NUMBER);
+      rccDisableTIM11(FALSE);
     }
 #endif
   }

@@ -108,6 +108,14 @@ GPTDriver GPTD9;
 #endif
 
 /**
+ * @brief   GPTD10 driver identifier.
+ * @note    The driver GPTD10 allocates the timer TIM11 when enabled.
+ */
+#if STM32_GPT_USE_TIM10 || defined(__DOXYGEN__)
+GPTDriver GPTD10;
+#endif
+
+/**
  * @brief   GPTD11 driver identifier.
  * @note    The driver GPTD11 allocates the timer TIM11 when enabled.
  */
@@ -329,6 +337,25 @@ CH_IRQ_HANDLER(STM32_TIM9_HANDLER) {
 }
 #endif /* STM32_GPT_USE_TIM9 */
 
+#if STM32_GPT_USE_TIM10
+#if !defined(STM32_TIM10_HANDLER)
+#error "STM32_TIM10_HANDLER not defined"
+#endif
+/**
+ * @brief   TIM10 interrupt handler.
+ *
+ * @isr
+ */
+CH_IRQ_HANDLER(STM32_TIM10_HANDLER) {
+
+  CH_IRQ_PROLOGUE();
+
+  gpt_lld_serve_interrupt(&GPTD10);
+
+  CH_IRQ_EPILOGUE();
+}
+#endif /* STM32_GPT_USE_TIM10 */
+
 #if STM32_GPT_USE_TIM11
 #if !defined(STM32_TIM11_HANDLER)
 #error "STM32_TIM11_HANDLER not defined"
@@ -451,6 +478,12 @@ void gpt_lld_init(void) {
   gptObjectInit(&GPTD9);
 #endif
 
+#if STM32_GPT_USE_TIM10
+  /* Driver initialization.*/
+  GPTD10.tim = STM32_TIM10;
+  gptObjectInit(&GPTD10);
+#endif
+
 #if STM32_GPT_USE_TIM11
   /* Driver initialization.*/
   GPTD11.tim = STM32_TIM11;
@@ -569,6 +602,16 @@ void gpt_lld_start(GPTDriver *gptp) {
     }
 #endif
 
+#if STM32_GPT_USE_TIM10
+    if (&GPTD10 == gptp) {
+      rccEnableTIM10(FALSE);
+      rccResetTIM10();
+      nvicEnableVector(STM32_TIM10_NUMBER,
+                       CORTEX_PRIORITY_MASK(STM32_GPT_TIM10_IRQ_PRIORITY));
+      gptp->clock = STM32_TIMCLK2;
+    }
+#endif
+
 #if STM32_GPT_USE_TIM11
     if (&GPTD11 == gptp) {
       rccEnableTIM11(FALSE);
@@ -680,6 +723,12 @@ void gpt_lld_stop(GPTDriver *gptp) {
     if (&GPTD9 == gptp) {
       nvicDisableVector(STM32_TIM9_NUMBER);
       rccDisableTIM9(FALSE);
+    }
+#endif
+#if STM32_GPT_USE_TIM10
+    if (&GPTD10 == gptp) {
+      nvicDisableVector(STM32_TIM10_NUMBER);
+      rccDisableTIM10(FALSE);
     }
 #endif
 #if STM32_GPT_USE_TIM11

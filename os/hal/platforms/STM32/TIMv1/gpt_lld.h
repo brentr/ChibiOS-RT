@@ -123,6 +123,15 @@
 #endif
 
 /**
+ * @brief   GPTD10 driver enable switch.
+ * @details If set to @p TRUE the support for GPTD9 is included.
+ * @note    The default is @p TRUE.
+ */
+#if !defined(STM32_GPT_USE_TIM10) || defined(__DOXYGEN__)
+#define STM32_GPT_USE_TIM10                  FALSE
+#endif
+
+/**
  * @brief   GPTD11 driver enable switch.
  * @details If set to @p TRUE the support for GPTD11 is included.
  * @note    The default is @p TRUE.
@@ -213,6 +222,13 @@
 #endif
 
 /**
+ * @brief   GPTD10 interrupt priority level setting.
+ */
+#if !defined(STM32_GPT_TIM10_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define STM32_GPT_TIM10_IRQ_PRIORITY        7
+#endif
+
+/**
  * @brief   GPTD11 interrupt priority level setting.
  */
 #if !defined(STM32_GPT_TIM11_IRQ_PRIORITY) || defined(__DOXYGEN__)
@@ -290,8 +306,9 @@
     !STM32_GPT_USE_TIM3 && !STM32_GPT_USE_TIM4 &&  \
     !STM32_GPT_USE_TIM5 && !STM32_GPT_USE_TIM6 &&  \
     !STM32_GPT_USE_TIM7 && !STM32_GPT_USE_TIM8 &&  \
-    !STM32_GPT_USE_TIM9 && !STM32_GPT_USE_TIM11 && \
-    !STM32_GPT_USE_TIM12 && !STM32_GPT_USE_TIM14
+    !STM32_GPT_USE_TIM9 && !STM32_GPT_USE_TIM10 && \
+    !STM32_GPT_USE_TIM11 && !STM32_GPT_USE_TIM12 && \
+    !STM32_GPT_USE_TIM14
 #error "GPT driver activated but no TIM peripheral assigned"
 #endif
 
@@ -478,6 +495,10 @@ extern GPTDriver GPTD8;
 
 #if STM32_GPT_USE_TIM9 && !defined(__DOXYGEN__)
 extern GPTDriver GPTD9;
+#endif
+
+#if STM32_GPT_USE_TIM10 && !defined(__DOXYGEN__)
+extern GPTDriver GPTD10;
 #endif
 
 #if STM32_GPT_USE_TIM11 && !defined(__DOXYGEN__)
