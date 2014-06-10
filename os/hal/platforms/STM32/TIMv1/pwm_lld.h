@@ -427,6 +427,11 @@ struct PWMDriver {
   (((pwmp)->tim->CCR[channel] != 0) ||                                      \
    (((pwmp)->tim->DIER & (2 << channel)) != 0))
 
+#define pwm_lld_get_width(pwmp, channel) (pwmp)->tim->CCR[(channel)]
+
+#define pwm_lld_set_width(pwmp, channel, width) \
+  pwm_lld_get_width(pwmp, channel) = (width)
+
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/
