@@ -280,18 +280,3 @@ size_t debugPrint(const char *fmt, ...)
 }
 
 #endif
-
-
-void logPanic(const char *panicTxt)
-/*
-  intended to be called from the SYSTEM_HALT_HOOK
-*/
-{
-  if (!panicTxt)
-    panicTxt = "<stack crash>";
-  debugPuts("\nPANIC!");
-  debugPuts(panicTxt);
-  chSysLock();
-  chSchGoSleepS(THD_STATE_FINAL);
-}
-
