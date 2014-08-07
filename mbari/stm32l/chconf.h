@@ -383,6 +383,12 @@
 #define CH_DBG_ENABLE_ASSERTS           TRUE
 #endif
 
+/* Improved assert error reporting -- replaces original in chdebug.h */
+#define chDbgAssert(c, m, r) {        \
+  if (!(c))                           \
+    chDbgPanic(m "|" r);              \
+}
+
 /**
  * @brief   Debug option, trace buffer.
  * @details If enabled then the context switch circular trace buffer is
@@ -515,8 +521,8 @@
  *          the system is halted.
  */
 #if !defined(SYSTEM_HALT_HOOK) || defined(__DOXYGEN__)
-void logPanic(const char *);
-#define SYSTEM_HALT_HOOK() { logPanic(dbg_panic_msg);    \
+#define SYSTEM_HALT_HOOK() {                                               \
+  /* System halt Code here.  */                                            \
 }
 #endif
 
