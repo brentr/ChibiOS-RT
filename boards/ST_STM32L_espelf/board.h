@@ -357,8 +357,8 @@
                                      PIN_OSPEED_400K(GPIOB_PIN13) |         \
                                      PIN_OSPEED_400K(GPIOB_PIN14) |         \
                                      PIN_OSPEED_400K(GPIOB_PIN15))
-#define VAL_GPIOB_PUPDR             (PIN_PUPDR_PULLUP(GPIOB_PIN0) |         \
-                                     PIN_PUPDR_PULLUP(GPIOB_PIN1) |         \
+#define VAL_GPIOB_PUPDR             (PIN_PUPDR_FLOATING(GPIOB_PIN0) |       \
+                                     PIN_PUPDR_FLOATING(GPIOB_PIN1) |       \
                                      PIN_PUPDR_FLOATING(GPIOB_BOOT1) |      \
                                      PIN_PUPDR_FLOATING(GPIOB_JTAG_TDO) |   \
                                      PIN_PUPDR_PULLUP(GPIOB_JTAG_TRST) |    \
