@@ -59,7 +59,21 @@
                                                 reception.                  */
 #define I2CD_TIMEOUT                0x20   /**< @brief Hardware timeout.    */
 #define I2CD_SMB_ALERT              0x40   /**< @brief SMBus Alert.         */
+#define I2CD_UNKNOWN_ERROR          0x80   /**< @brief internal error       */
+
+#define I2CD_STOPPED  ((i2cflags_t)(-1))
+                           /**< @brief stop condition or i2cStop() called   */
 /** @} */
+
+/**
+ * @name   I2C function return codes
+ * @{
+ */
+#define I2C_OK        (RDY_OK)
+#define I2C_TIMEOUT   (RDY_TIMEOUT)
+#define I2C_ERROR     (RDY_RESET)
+/** @} */
+
 
 /*===========================================================================*/
 /* Driver pre-compile time settings.                                         */
@@ -117,6 +131,7 @@ typedef enum {
 #define i2cMasterReceive(i2cp, addr, rxbuf, rxbytes)                        \
   (i2cMasterReceiveTimeout(i2cp, addr, rxbuf, rxbytes, TIME_INFINITE))
 
+
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/
@@ -138,10 +153,17 @@ extern "C" {
                                 i2caddr_t addr,
                                 uint8_t *rxbuf, size_t rxbytes,
                                 systime_t timeout);
+
+#if HAL_USE_I2C_LOCK    /* I2C slave mode support */
+  void i2cLock(I2CDriver *i2cp, systime_t lockDuration);
+  void i2cUnlock(I2CDriver *i2cp);
+#endif
+
 #if I2C_USE_MUTUAL_EXCLUSION
   void i2cAcquireBus(I2CDriver *i2cp);
   void i2cReleaseBus(I2CDriver *i2cp);
 #endif /* I2C_USE_MUTUAL_EXCLUSION */
+
 
 #ifdef __cplusplus
 }

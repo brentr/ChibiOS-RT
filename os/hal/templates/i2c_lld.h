@@ -31,6 +31,14 @@
 /* Driver constants.                                                         */
 /*===========================================================================*/
 
+/**
+ * @name   Invalid I2C bus address
+ * @{
+ */
+#define i2cInvalidAdr  ((i2caddr_t) -1)
+/** @} */
+
+
 /*===========================================================================*/
 /* Driver pre-compile time settings.                                         */
 /*===========================================================================*/
@@ -101,6 +109,36 @@ struct I2CDriver {
    * @brief   Error flags.
    */
   i2cflags_t                errors;
+
+#if HAL_USE_I2C_SLAVE
+  /* additional fields to support I2C slave transactions */
+
+  /**
+   * @brief     slave address of message being processed
+   */
+  i2caddr_t                 targetAdr;
+  /**
+   * @brief     Error Mask for last slave message
+   */
+  i2cflags_t                slaveErrors;
+  /**
+   * @brief     Length of most recently transferred slave message
+   */
+  uint32_t                  slaveBytes;
+  /**
+   * @brief     Maximum # of ticks slave may stretch the I2C clock
+   */
+  systime_t                 slaveTimeout;
+  /**
+   * @brief     Pointer to handler for next slave received message
+   */
+  const I2CSlaveMsg         *slaveNextRx;
+  /**
+   * @brief     Pointer to handler for next slave reply message
+   */
+  const I2CSlaveMsg         *slaveNextReply;
+#endif
+
 #if I2C_USE_MUTUAL_EXCLUSION || defined(__DOXYGEN__)
 #if CH_USE_MUTEXES || defined(__DOXYGEN__)
   /**
@@ -130,6 +168,86 @@ struct I2CDriver {
  */
 #define i2c_lld_get_errors(i2cp) ((i2cp)->errors)
 
+
+#if HAL_USE_I2C_LOCK
+/**
+ * @brief   Unlock I2C bus after the end of the next transaction
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ **/
+#define i2c_lld_unlock(i2cp) (i2cp->lockDuration = TIME_IMMEDIATE)
+#endif
+
+
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+/**
+ * @brief   Get slave errors from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveErrors(i2cp) ((i2cp)->slaveErrors)
+
+/**
+ * @brief   Get slave message bytes transferred from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveBytes(i2cp) ((i2cp)->slaveBytes)
+
+
+/**
+ * @brief   Get slave timeout in ticks from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveTimeout(i2cp) ((i2cp)->slaveTimeout)
+
+/**
+ * @brief   Set slave timeout in ticks for I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_set_slaveTimeout(i2cp,ticks) ((i2cp)->slaveTimeout=(ticks))
+
+/**
+ * @brief   Get slave target address from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveTargetAdr(i2cp) ((i2cp)->targetAdr)
+
+/**
+ * @brief   Get slave receive message descriptor from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveReceive(i2cp) ((i2cp)->slaveNextRx)
+
+/**
+ * @brief   Get slave reply message descriptor from I2C driver.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+#define i2c_lld_get_slaveReply(i2cp) ((i2cp)->slaveNextReply)
+
+#endif
+
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/
@@ -153,6 +271,18 @@ extern "C" {
   msg_t i2c_lld_master_receive_timeout(I2CDriver *i2cp, i2caddr_t addr,
                                        uint8_t *rxbuf, size_t rxbytes,
                                        systime_t timeout);
+
+#if HAL_USE_I2C_LOCK    /* I2C slave mode support */
+  void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration);
+#endif
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+  msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
+  void  i2c_lld_unmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr);
+  void  i2c_lld_unmatchAll(I2CDriver *i2cp);
+  void  i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg);
+  void  i2c_lld_slaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg);
+#endif /* HAL_USE_I2C_SLAVE */
+
 #ifdef __cplusplus
 }
 #endif
