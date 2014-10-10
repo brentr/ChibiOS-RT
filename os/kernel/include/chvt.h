@@ -128,6 +128,17 @@ typedef struct {
  * @name    Macro Functions
  * @{
  */
+
+/**
+ * @brief   First time initialization of a Virtual Timer.
+ * @note    Necessary if RAM in which timer is allocated is not cleared to zero
+ *
+ * @param[in] vtp       the @p VirtualTimer structure pointer
+ *
+ * @api
+ */
+#define chVTInit(vtp) {(vtp)->vt_func = NULL;}
+
 /**
  * @brief   Virtual timers ticker.
  * @note    The system lock is released before entering the callback and

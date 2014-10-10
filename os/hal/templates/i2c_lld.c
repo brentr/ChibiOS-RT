@@ -189,6 +189,158 @@ msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,
   return RDY_OK;
 }
 
+
+#if HAL_USE_I2C_LOCK    /* I2C slave mode support */
+
+/**
+ * @brief   Lock I2C bus at the beginning of the next message sent
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] lockDuration   max number of ticks to hold bus locked
+ *                      - @a TIME_INFINITE no timeout.
+ *                      - @a TIME_IMMEDIATE unlock the bus immediately
+ *                      .
+ *
+ * @notapi
+ */
+void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
+{
+  (void)i2cp;
+  (void)lockDuration;
+}
+
+#endif
+
+
+#if HAL_USE_I2C_SLAVE   /* I2C slave mode support */
+
+/**
+ * @brief   Reconfigure I2C channel to respond to indicated address
+ *          in addition to those already matched
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] i2cadr    I2C network address
+ *
+ * @return              Length of message OR the type of event received
+ * @retval I2C_OK       Success
+ * @retval I2C_ERROR    Cannot match address in addition of those already
+ *
+ * @details             MatchAddress calls are cumulative.
+ *                      Specify address zero to match I2C "all call"
+ *                      Does not support 10-bit addressing.
+ *
+ * @notapi
+ **/
+msg_t i2c_lld_matchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
+{
+  (void)i2cp;
+  (void)i2cadr;
+  return I2C_OK;  /* or I2C_ERROR */
+}
+
+
+/**
+ * @brief   Configure to ignore messages directed to the given i2cadr
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] i2cadr    I2C bus address
+ *                      - @a 0 matches "all call"
+ *                      .
+ * @details A message being transferred that has already matched the
+ *          specified address will continue being processed.
+ *          Requests to unmatch an address that is not currently being matched
+ *          are ignored.
+ *
+ * @notapi
+ */
+void i2cUnmatchAddress(I2CDriver *i2cp, i2caddr_t  i2cadr)
+{
+  (void)i2cp;
+  (void)i2cadr;
+}
+
+
+/**
+ * @brief   Reconfigure I2C channel to no longer match any address
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @details   Causes all subsequent messages to be ignored.
+ *            A message being transferred that has already matched a
+ *            slave address will continue being processed.
+ *
+ * @notapi
+ **/
+void i2cUnmatchAll(I2CDriver *i2cp)
+{
+  (void)i2cp;
+}
+
+
+/**
+ * @brief   Configure callbacks & buffers for message reception & query reply
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] rxMsg     @p I2CSlaveMsg struct for processing subsequent messages
+ * @param[in] replyMsg  @p I2CSlaveMsg struct for processing subsequent queries
+ *
+ * @details             Call i2cMatchAddress() after this to start processing
+ *     Enabling match addresses before installing handler callbacks can
+ *     result in locking the I2C bus when a master accesses those
+ *     unconfigured slave addresses
+ *
+ * @notapi
+ */
+void i2cSlaveConfigure(I2CDriver *i2cp,
+                   const I2CSlaveMsg *rxMsg, const I2CSlaveMsg *replyMsg)
+{
+  (void)i2cp;
+  (void)rxMsg;
+  (void)replyMsg;
+}
+
+
+/**
+ * @brief   Configure callbacks & buffers for query reply
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] replyMsg  @p I2CSlaveMsg struct for processing subsequent queries
+ *
+ * @details             Call i2cMatchAddress() after this to start processing
+ *     Enabling match addresses before installing handler callbacks can
+ *     result in locking the I2C bus when a master accesses those
+ *     unconfigured slave addresses
+ *
+ * @notapi
+ */
+void i2cSlaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
+{
+  (void)i2cp;
+  (void)rxMsg;
+}
+
+
+/**
+ * @brief   Configure callbacks & buffers for query reply
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] replyMsg  @p I2CSlaveMsg struct for processing subsequent queries
+ *
+ * @details             Call i2cMatchAddress() after this to start processing
+ *     Enabling match addresses before installing handler callbacks can
+ *     result in locking the I2C bus when a master accesses those
+ *     unconfigured slave addresses
+ *
+ * @notapi
+ */
+void i2cSlaveReply(I2CDriver *i2cp, const I2CSlaveMsg *replyMsg)
+{
+  (void)i2cp;
+  (void)replyMsg;
+}
+
+#endif /* HAL_USE_I2C_SLAVE */
+
 #endif /* HAL_USE_I2C */
 
 /** @} */
