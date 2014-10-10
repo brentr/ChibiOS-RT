@@ -1,0 +1,2 @@
+#!/bin/sh
+GDBstart=restart.gdb exec debug
