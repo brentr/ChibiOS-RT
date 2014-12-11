@@ -209,13 +209,27 @@ static void i2cAbortOperation(I2CDriver *i2cp) {
  *
  * @notapi
  */
-static INLINE void stopTimer(I2CDriver *i2cp)
+static INLINE void stopTimerS(I2CDriver *i2cp)
 {
   if (chVTIsArmedI(&i2cp->timer))
     chVTResetI(&i2cp->timer);
 }
+/**
+ * @brief   stop transaction timeout countdown
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static INLINE void stopTimer(I2CDriver *i2cp)
+{
+  chSysLockFromIsr();
+  stopTimerS(i2cp);
+  chSysUnlockFromIsr();
+}
 #else
-#define stopTimer(ignored)  {}
+#define stopTimerS(ignored)  {}
+#define stopTimer(ignored) {}
 #endif
 
 
@@ -283,12 +297,14 @@ static void slaveTimeExpired(void *i2cv) {
  */
 static INLINE void startSlaveAction(I2CDriver *i2cp, i2caddr_t targetAdr)
 {
-  stopTimer(i2cp);
+  chSysLockFromIsr();
+  stopTimerS(i2cp);
   i2cp->targetAdr = targetAdr;
   i2cp->slaveBytes = 0;
   i2cp->slaveErrors = 0;
   if (i2cp->slaveTimeout != TIME_INFINITE)
     chVTSetI(&i2cp->timer, i2cp->slaveTimeout, slaveTimeExpired, i2cp);
+  chSysUnlockFromIsr();
 }
 
 /**
@@ -532,11 +548,13 @@ void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
 {
   i2cp->lockDuration = lockDuration;
   if (i2cp->mode >= i2cIsMaster) {
-    stopTimer(i2cp);
+    chSysLockFromIsr();
+    stopTimerS(i2cp);
     if (lockDuration == TIME_IMMEDIATE)
       lockExpired(i2cp);
     else if (lockDuration != TIME_INFINITE)
       chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
+    chSysUnockFromIsr();
   }
 }
 
@@ -561,11 +579,12 @@ qEvt(0xee00 | errCode);
   else if (dp->SR2 & I2C_SR2_MSL) {
 #if HAL_USE_I2C_LOCK    /* I2C bus locking support */
     i2cp->mode = i2cIsMaster;
+    chSysLockFromIsr();
     switch (i2cp->lockDuration) {
       case TIME_INFINITE:
         break;
       case TIME_IMMEDIATE:
-        stopTimer(i2cp);
+        stopTimerS(i2cp);
       default:
         if (!chVTIsArmedI(&i2cp->timer)) {
           dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
@@ -573,6 +592,7 @@ qEvt(0xee00 | errCode);
           i2cp->lockDuration = TIME_IMMEDIATE;
         }
     }
+    chSysUnlockFromIsr();
 #else  /* signal stop condition on any error */
     dp->CR1 |= I2C_CR1_STOP | I2C_CR1_ACK;
     i2cp->mode = i2cIdle;
@@ -654,12 +674,14 @@ qEvt(0xcccc);
 static INLINE void endMasterAction(I2CDriver *i2cp, uint32_t regCR1)
 {
 #if HAL_USE_I2C_LOCK
+  chSysLockFromIsr();
   if (i2cp->lockDuration != TIME_IMMEDIATE && (
       chVTIsArmedI(&i2cp->timer) || i2cp->lockDuration == TIME_INFINITE)) {
     i2cp->mode = i2cIsMaster;
     return;
   }
-  stopTimer(i2cp);
+  stopTimerS(i2cp);
+  chSysUnlockFromIsr();
 #endif
   i2cp->i2c->CR1 = regCR1 | I2C_CR1_STOP | I2C_CR1_ACK;
   i2cp->mode = i2cIdle;
@@ -804,8 +826,11 @@ qEvt(0x5555);
 #if HAL_USE_I2C_LOCK
       {
         systime_t lockDuration = i2cp->lockDuration;
-        if (lockDuration != TIME_IMMEDIATE && lockDuration != TIME_INFINITE)
+        if (lockDuration != TIME_IMMEDIATE && lockDuration != TIME_INFINITE) {
+          chSysLockFromIsr();
           chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
+          chSysUnlockFromIsr();
+        }
       }
 #endif
         break;
@@ -1344,6 +1369,7 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
   VirtualTimer vt;  /* Global timeout for the whole operation.*/
   chVTInit(&vt);
 
+  chSysLockFromIsr();
   if (timeout != TIME_INFINITE)
     chVTSetI(&vt, timeout, i2c_lld_safety_timeout, i2cp);
   i2cp->errors = 0;
@@ -1351,6 +1377,7 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
   chSchGoSleepS(THD_STATE_SUSPENDED);
   if (chVTIsArmedI(&vt))
     chVTResetI(&vt);
+  chSysUnlockFromIsr();
   return chThdSelf()->p_u.rdymsg;
 }
 
