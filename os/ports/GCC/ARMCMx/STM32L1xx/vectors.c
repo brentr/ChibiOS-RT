@@ -1,6 +1,11 @@
 /*
     ChibiOS/RT - Copyright (C) 2006,2007,2008,2009,2010,
                  2011,2012,2013 Giovanni Di Sirio.
+                 
+    revised:  11/12/15  brent@mbari.org
+              Use of new unhandled() macro avoids much repetition
+              Disable all interrupts when unhandled exception occurs
+              Compile unique unhandled handlers if not optimizing to aid debug 
 
     This file is part of ChibiOS/RT.
 
@@ -37,6 +42,36 @@
 
 #include "ch.h"
 
+#if __OPTIMIZE__ || defined(__DOXYGEN)
+
+/**
+ * @brief   Generic Unhandled exceptions handler.
+ * @details Any undefined exception vector points to this function by default.
+ *          This function simply stops the system into an infinite loop.
+ *
+ * @notapi
+ */
+#if !defined(__DOXYGEN__)
+__attribute__ ((naked))
+#endif
+void _unhandled_exception(void) {chSysDisable();while(TRUE);}
+
+#define unhandled(exception)   \
+  void exception(void)         \
+    __attribute__((weak, alias("_unhandled_exception")))
+  
+#else  //if unoptimized compile, create unique exception handlers to aid debug
+
+#define unhandled(exception)   \
+  extern void exception(void); \
+  __attribute__ ((naked))      \
+    void _unhandled_##exception##_exception(void) {chSysDisable();while(TRUE);}\
+  void exception(void)         \
+    __attribute__((weak, alias("_unhandled_" #exception "_exception")))
+
+#endif
+
+
 /**
  * @brief   Type of an IRQ vector.
  */
@@ -65,69 +100,71 @@ typedef struct {
   irq_vector_t  vectors[45];
 } vectors_t;
 
+
 #if !defined(__DOXYGEN__)
 extern uint32_t __main_stack_end__;
 extern void ResetHandler(void);
-extern void NMIVector(void);
-extern void HardFaultVector(void);
-extern void MemManageVector(void);
-extern void BusFaultVector(void);
-extern void UsageFaultVector(void);
-extern void Vector1C(void);
-extern void Vector20(void);
-extern void Vector24(void);
-extern void Vector28(void);
-extern void SVCallVector(void);
-extern void DebugMonitorVector(void);
-extern void Vector34(void);
-extern void PendSVVector(void);
-extern void SysTickVector(void);
-extern void Vector40(void);
-extern void Vector44(void);
-extern void Vector48(void);
-extern void Vector4C(void);
-extern void Vector50(void);
-extern void Vector54(void);
-extern void Vector58(void);
-extern void Vector5C(void);
-extern void Vector60(void);
-extern void Vector64(void);
-extern void Vector68(void);
-extern void Vector6C(void);
-extern void Vector70(void);
-extern void Vector74(void);
-extern void Vector78(void);
-extern void Vector7C(void);
-extern void Vector80(void);
-extern void Vector84(void);
-extern void Vector88(void);
-extern void Vector8C(void);
-extern void Vector90(void);
-extern void Vector94(void);
-extern void Vector98(void);
-extern void Vector9C(void);
-extern void VectorA0(void);
-extern void VectorA4(void);
-extern void VectorA8(void);
-extern void VectorAC(void);
-extern void VectorB0(void);
-extern void VectorB4(void);
-extern void VectorB8(void);
-extern void VectorBC(void);
-extern void VectorC0(void);
-extern void VectorC4(void);
-extern void VectorC8(void);
-extern void VectorCC(void);
-extern void VectorD0(void);
-extern void VectorD4(void);
-extern void VectorD8(void);
-extern void VectorDC(void);
-extern void VectorE0(void);
-extern void VectorE4(void);
-extern void VectorE8(void);
-extern void VectorEC(void);
-extern void VectorF0(void);
 #endif /* !defined(__DOXYGEN__) */
+
+unhandled(NMIVector);
+unhandled(HardFaultVector);
+unhandled(MemManageVector);
+unhandled(BusFaultVector);
+unhandled(UsageFaultVector);
+unhandled(Vector1C);
+unhandled(Vector20);
+unhandled(Vector24);
+unhandled(Vector28);
+unhandled(SVCallVector);
+unhandled(DebugMonitorVector);
+unhandled(Vector34);
+unhandled(PendSVVector);
+unhandled(SysTickVector);
+unhandled(Vector40);
+unhandled(Vector44);
+unhandled(Vector48);
+unhandled(Vector4C);
+unhandled(Vector50);
+unhandled(Vector54);
+unhandled(Vector58);
+unhandled(Vector5C);
+unhandled(Vector60);
+unhandled(Vector64);
+unhandled(Vector68);
+unhandled(Vector6C);
+unhandled(Vector70);
+unhandled(Vector74);
+unhandled(Vector78);
+unhandled(Vector7C);
+unhandled(Vector80);
+unhandled(Vector84);
+unhandled(Vector88);
+unhandled(Vector8C);
+unhandled(Vector90);
+unhandled(Vector94);
+unhandled(Vector98);
+unhandled(Vector9C);
+unhandled(VectorA0);
+unhandled(VectorA4);
+unhandled(VectorA8);
+unhandled(VectorAC);
+unhandled(VectorB0);
+unhandled(VectorB4);
+unhandled(VectorB8);
+unhandled(VectorBC);
+unhandled(VectorC0);
+unhandled(VectorC4);
+unhandled(VectorC8);
+unhandled(VectorCC);
+unhandled(VectorD0);
+unhandled(VectorD4);
+unhandled(VectorD8);
+unhandled(VectorDC);
+unhandled(VectorE0);
+unhandled(VectorE4);
+unhandled(VectorE8);
+unhandled(VectorEC);
+unhandled(VectorF0);
 
 /**
  * @brief   STM32L1xx vectors table.
@@ -155,81 +192,5 @@ vectors_t _vectors = {
     VectorF0
   }
 };
-
-/**
- * @brief   Unhandled exceptions handler.
- * @details Any undefined exception vector points to this function by default.
- *          This function simply stops the system into an infinite loop.
- *
- * @notapi
- */
-#if !defined(__DOXYGEN__)
-__attribute__ ((naked))
-#endif
-void _unhandled_exception(void) {
-
-  while (TRUE)
-    ;
-}
-
-void NMIVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void HardFaultVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void MemManageVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void BusFaultVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void UsageFaultVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector1C(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector20(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector24(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector28(void) __attribute__((weak, alias("_unhandled_exception")));
-void SVCallVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void DebugMonitorVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector34(void) __attribute__((weak, alias("_unhandled_exception")));
-void PendSVVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void SysTickVector(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector40(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector44(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector48(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector4C(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector50(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector54(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector58(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector5C(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector60(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector64(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector68(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector6C(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector70(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector74(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector78(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector7C(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector80(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector84(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector88(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector8C(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector90(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector94(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector98(void) __attribute__((weak, alias("_unhandled_exception")));
-void Vector9C(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorA0(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorA4(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorA8(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorAC(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorB0(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorB4(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorB8(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorBC(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorC0(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorC4(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorC8(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorCC(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorD0(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorD4(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorD8(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorDC(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorE0(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorE4(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorE8(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorEC(void) __attribute__((weak, alias("_unhandled_exception")));
-void VectorF0(void) __attribute__((weak, alias("_unhandled_exception")));
 
 /** @} */
