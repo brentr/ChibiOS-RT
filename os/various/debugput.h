@@ -29,6 +29,7 @@
 ***************************************************************/
 
 #include <ch.h>
+#include <stdarg.h>
 
 /*
   max length of debugPrint() string.
@@ -60,6 +61,7 @@ size_t debugPuts(const char *str);
 
 #if debugPrintBufSize
 size_t debugPrint(const char *fmt, ...);
+size_t vDebugPrint(const char *fmt, va_list ap);
 /*
   printf style debugging output
   outputs a trailing newline

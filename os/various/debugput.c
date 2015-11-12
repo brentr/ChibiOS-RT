@@ -140,6 +140,22 @@ size_t debugPuts(const char *str)
 }
 
 
+#if debugPrintBufSize
+
+size_t debugPrint(const char *fmt, ...)
+/*
+  printf style debugging output
+  outputs a trailing newline
+*/
+{
+  size_t len;
+  va_list ap;
+  va_start(ap, fmt);
+  len = vDebugPrint(fmt, ap);
+  va_end(ap);
+  return len;
+}
+
 #if debugPrintBufSize < 0
 /*
   printf like debug messages to host via ARM DCC
@@ -220,14 +236,12 @@ static msg_t qput(void *ip, uint8_t b) {
 static const struct qStreamVMT qVmt = {qwrites, nullReads, qput, nullGet};
 
 
-size_t debugPrint(const char *fmt, ...)
+size_t vDebugPrint(const char *fmt, va_list ap)
 /*
   printf style debugging output
   outputs a trailing newline
 */
 {
-  va_list ap;
-  va_start(ap, fmt);
   NullStream lenStream = {&nullVmt, 0};
   chvprintf((BaseSequentialStream *) &lenStream, fmt, ap);
   size_t len = lenStream.len;
@@ -252,31 +266,30 @@ size_t debugPrint(const char *fmt, ...)
   }else
     if (debugPutc('\n') >= 0)
       len=1;
-  va_end(ap);
   return len;
 }
 
-#elif debugPrintBufSize > 0  //use global buffer to avoid expanding printf twice
+#else //use global buffer to avoid expanding printf twice
 
-size_t debugPrint(const char *fmt, ...)
+size_t vDebugPrint(const char *fmt, va_list ap)
 /*
   printf style debugging output
   outputs a trailing newline
 */
 {
   size_t len;
-  va_list ap;
-  va_start(ap, fmt);
   static MUTEX_DECL(debugPrintLock);
   static uint8_t buf[debugPrintBufSize];
   static MemoryStream dbgStream;
   chMtxLock(&debugPrintLock);
   msObjectInit(&dbgStream, buf, sizeof(buf), 0);
   chvprintf((BaseSequentialStream *) &dbgStream, fmt, ap);
-  va_end(ap);
   debugPut(buf, len=dbgStream.eos);
   chMtxUnlock();
   return len;
 }
 
 #endif
+
+#endif
+
