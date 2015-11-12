@@ -554,7 +554,7 @@ void i2c_lld_lock(I2CDriver *i2cp, systime_t lockDuration)
       lockExpired(i2cp);
     else if (lockDuration != TIME_INFINITE)
       chVTSetI(&i2cp->timer, lockDuration, lockExpired, i2cp);
-    chSysUnockFromIsr();
+    chSysUnlockFromIsr();
   }
 }
 

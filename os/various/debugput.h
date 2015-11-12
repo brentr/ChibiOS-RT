@@ -28,6 +28,9 @@
 *
 ***************************************************************/
 
+#ifndef DEBUGPUT_H
+#define DEBUGPUT_H
+
 #include <ch.h>
 #include <stdarg.h>
 
@@ -36,7 +39,9 @@
   0 omits debugPrint() entirely
   <0 avoids allocation of global buffer by evaluating printf twice
 */
+#ifndef debugPrintBufSize
 #define debugPrintBufSize -250
+#endif
 
 Thread *debugPutInit(char *outq, size_t outqSize);
 /*
@@ -67,4 +72,6 @@ size_t vDebugPrint(const char *fmt, va_list ap);
   outputs a trailing newline
   returns # of characters actually output (including the trailing newline)
 */
+#endif
+
 #endif
