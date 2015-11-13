@@ -42,7 +42,7 @@
 
 #include "ch.h"
 
-#if __OPTIMIZE__ || defined(__DOXYGEN)
+#if __OPTIMIZE__ || defined(__DOXYGEN__)
 
 /**
  * @brief   Generic Unhandled exceptions handler.
