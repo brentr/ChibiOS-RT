@@ -31,6 +31,10 @@
 /* Driver constants.                                                         */
 /*===========================================================================*/
 
+/*  STM32_SPI_USE_SPIn may be set to 0 or any of these values  */
+#define STM32_SPI_DMA    1   /* for full API with DMA */
+#define STM32_SPI_POLL   3   /* polling mode only (restricted API) */
+
 /*===========================================================================*/
 /* Driver pre-compile time settings.                                         */
 /*===========================================================================*/
