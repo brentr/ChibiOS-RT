@@ -1,11 +1,11 @@
 /*
     ChibiOS/RT - Copyright (C) 2006,2007,2008,2009,2010,
                  2011,2012,2013 Giovanni Di Sirio.
-                 
+
     revised:  11/12/15  brent@mbari.org
               Use of new unhandled() macro avoids much repetition
               Disable all interrupts when unhandled exception occurs
-              Compile unique unhandled handlers if not optimizing to aid debug 
+              Compile unique unhandled handlers if not optimizing to aid debug
 
     This file is part of ChibiOS/RT.
 
@@ -41,6 +41,14 @@
  */
 
 #include "ch.h"
+#include "hal.h"
+
+/**
+* Executes the BKPT instruction that causes the debugger to stop.
+* If no debugger is attached, this will be ignored
+*/
+#define bkpt() __asm volatile("BKPT #0\n")
+#define crash() do {chSysDisable(); bkpt(); NVIC_SystemReset(); } while(0)
 
 #if __OPTIMIZE__ || defined(__DOXYGEN__)
 
@@ -54,18 +62,18 @@
 #if !defined(__DOXYGEN__)
 __attribute__ ((naked))
 #endif
-void _unhandled_exception(void) {chSysDisable();while(TRUE);}
+void _unhandled_exception(void) {crash();}
 
 #define unhandled(exception)   \
   void exception(void)         \
     __attribute__((weak, alias("_unhandled_exception")))
-  
+
 #else  //if unoptimized compile, create unique exception handlers to aid debug
 
 #define unhandled(exception)   \
   extern void exception(void); \
   __attribute__ ((naked))      \
-    void _unhandled_##exception##_exception(void) {chSysDisable();while(TRUE);}\
+    void _unhandled_##exception##_exception(void) {crash();}\
   void exception(void)         \
     __attribute__((weak, alias("_unhandled_" #exception "_exception")))
 
