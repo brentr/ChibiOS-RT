@@ -204,17 +204,3 @@ void DCCputsQ(DDCfetcher fetch, void *link, size_t len)
       DCCwrite((fetch(link)<<8 | d[1])<<8 | d[0]);
   }
 }
-
-
-void port_halt(void)
-/*
-  Override the default port_halt() so it attempts
-  to output the last registered panic message before halting
-*/
-{
-  port_disable();
-  DCCputs("\nPANIC!");
-  if (dbg_panic_msg)
-    DCCputs(dbg_panic_msg);
-  while(TRUE) {}
-}
