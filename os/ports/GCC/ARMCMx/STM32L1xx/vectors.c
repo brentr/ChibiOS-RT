@@ -41,14 +41,13 @@
  */
 
 #include "ch.h"
-#include "hal.h"
 
 /**
 * Executes the BKPT instruction that causes the debugger to stop.
 * If no debugger is attached, this will be ignored
 */
 #define bkpt() __asm volatile("BKPT #0\n")
-#define crash() do {chSysDisable(); bkpt(); NVIC_SystemReset(); } while(0)
+#define crash() do {chSysDisable(); bkpt(); chSysHalt(); } while(0)
 
 #if __OPTIMIZE__ || defined(__DOXYGEN__)
 
@@ -68,14 +67,116 @@ void _unhandled_exception(void) {crash();}
   void exception(void)         \
     __attribute__((weak, alias("_unhandled_exception")))
 
+#define unhandledSpecial(exception) unhandled(exception)
+
 #else  //if unoptimized compile, create unique exception handlers to aid debug
 
-#define unhandled(exception)   \
+/*!
+* \file cortex_hardfault_handler.c -- 
+* from http://mcufreaks.blogspot.com/2013/03/hard-fault-debugging-for-cortex-m-mcus.html
+* \brief The code below implements a mechanism to discover HARD_FAULT sources in Cortex-M embedded applications.
+* \version mcufreaks.blogspot.com
+*/
+/*!
+* \note The following declaration is mandatory to avoid compiler errors. \n
+* In the declaration below, we are assigning the assembler label __label_hardfaultGetContext__
+* to the entry point of __hardfaultGetContext__ function
+*/
+void hardfaultGetContext(unsigned long* stackedContextPtr) asm("label_hardfaultGetContext");
+/*!
+* \fn void hardfaultGetContext(unsigned long* stackedContextPtr)
+* \brief Copies system stacked context into function local variables. \n
+* This function is called from asm-coded Interrupt Service Routine associated to HARD_FAULT exception
+* \param stackedContextPtr : Address of stack containing stacked processor context.
+*/
+void hardfaultGetContext(unsigned long* stackedContextPtr)
+{
+static volatile unsigned long stacked_r0;
+static volatile unsigned long stacked_r1;
+static volatile unsigned long stacked_r2;
+static volatile unsigned long stacked_r3;
+static volatile unsigned long stacked_r12;
+static volatile unsigned long stacked_lr;
+static volatile unsigned long stacked_pc;
+static volatile unsigned long stacked_psr;
+static volatile unsigned long _CFSR;
+static volatile unsigned long _HFSR;
+static volatile unsigned long _DFSR;
+static volatile unsigned long _AFSR;
+static volatile unsigned long _BFAR;
+static volatile unsigned long _MMAR;
+stacked_r0 = stackedContextPtr[0];
+stacked_r1 = stackedContextPtr[1];
+stacked_r2 = stackedContextPtr[2];
+stacked_r3 = stackedContextPtr[3];
+stacked_r12 = stackedContextPtr[4];
+stacked_lr = stackedContextPtr[5];
+stacked_pc = stackedContextPtr[6];
+stacked_psr = stackedContextPtr[7];
+// Configurable Fault Status Register
+// Consists of MMSR, BFSR and UFSR
+_CFSR = (*((volatile unsigned long *)(0xE000ED28))) ;
+// Hard Fault Status Register
+_HFSR = (*((volatile unsigned long *)(0xE000ED2C))) ;
+// Debug Fault Status Register
+_DFSR = (*((volatile unsigned long *)(0xE000ED30))) ;
+// Auxiliary Fault Status Register
+_AFSR = (*((volatile unsigned long *)(0xE000ED3C))) ;
+// Read the Fault Address Registers. These may not contain valid values.
+// Check BFARVALID/MMARVALID to see if they are valid values
+// MemManage Fault Address Register
+_MMAR = (*((volatile unsigned long *)(0xE000ED34))) ;
+// Bus Fault Address Register
+_BFAR = (*((volatile unsigned long *)(0xE000ED38))) ;
+crash();
+// The following code avoids compiler warning [-Wunused-but-set-variable]
+stackedContextPtr[0] = stacked_r0;
+stackedContextPtr[1] = stacked_r1;
+stackedContextPtr[2] = stacked_r2;
+stackedContextPtr[3] = stacked_r3;
+stackedContextPtr[4] = stacked_r12;
+stackedContextPtr[5] = stacked_lr;
+stackedContextPtr[6] = stacked_pc;
+stackedContextPtr[7] = stacked_psr;
+(*((volatile unsigned long *)(0xE000ED28))) = _CFSR;
+(*((volatile unsigned long *)(0xE000ED2C))) = _HFSR;
+(*((volatile unsigned long *)(0xE000ED30))) = _DFSR;
+(*((volatile unsigned long *)(0xE000ED3C))) = _AFSR;
+(*((volatile unsigned long *)(0xE000ED34))) = _MMAR;
+(*((volatile unsigned long *)(0xE000ED38))) = _BFAR;
+}
+/*!
+* \fn void hardfaultHandler(void)
+* \brief HARD_FAULT interrupt service routine. Selects among PSP or MSP stacks and \n
+* calls \ref hardfaultGetContext passing the selected stack pointer address as parameter.
+* \note __naked__ attribute avoids generating prologue and epilogue code sequences generated \n
+* for C-functions, and only pure asm instructions should be included into the function body.
+*/
+void __attribute__((naked, interrupt)) _unhandled_HardFaultVector_exception(void)
+{
+  bkpt();
+__asm__ volatile	(
+" MOVS R0, #4 \n" /* Determine if processor uses PSP or MSP by checking bit.4 at LR register. */
+"	MOV R1, LR \n"
+"	TST R0, R1 \n"
+"	BEQ _IS_MSP \n" /* Jump to '_MSP' if processor uses MSP stack. */
+"	MRS R0, PSP \n" /* Prepare PSP content as parameter to the calling function below. */
+"	BL label_hardfaultGetContext\n" /* Call 'hardfaultGetContext' passing PSP content as stackedContextPtr value. */
+"_IS_MSP: \n"
+"	MRS R0, MSP \n" /* Prepare MSP content as parameter to the calling function below. */
+"	BL label_hardfaultGetContext" /* Call 'hardfaultGetContext' passing MSP content as stackedContextPtr value. */
+:: );
+}
+
+#define unhandledSpecial(exception)   \
   extern void exception(void); \
   __attribute__ ((naked))      \
-    void _unhandled_##exception##_exception(void) {crash();}\
   void exception(void)         \
     __attribute__((weak, alias("_unhandled_" #exception "_exception")))
+
+#define unhandled(exception)   \
+  void _unhandled_##exception##_exception(void) {crash();}\
+  unhandledSpecial(exception);       \
 
 #endif
 
@@ -115,7 +216,7 @@ extern void ResetHandler(void);
 #endif /* !defined(__DOXYGEN__) */
 
 unhandled(NMIVector);
-unhandled(HardFaultVector);
+unhandledSpecial(HardFaultVector);
 unhandled(MemManageVector);
 unhandled(BusFaultVector);
 unhandled(UsageFaultVector);
