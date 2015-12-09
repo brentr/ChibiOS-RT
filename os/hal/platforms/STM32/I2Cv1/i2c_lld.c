@@ -262,14 +262,16 @@ static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
  * @notapi
  */
 static INLINE void reportSlaveError(I2CDriver *i2cp) {
-  const I2CSlaveMsg *xfer = i2cp->mode >= i2cSlaveReplying ?
-                                          i2cp->slaveReply : i2cp->slaveRx;
-  xfer->exception(i2cp);  /* in this case, i2cp->slaveErrors == 0 */
-  i2cp->mode = i2cIdle;
-  i2cp->targetAdr = i2cInvalidAdr;
 #if HAL_USE_I2C_STARTFIX
   i2cp->config->disarmStartDetect();
 #endif
+  {
+    const I2CSlaveMsg *xfer = i2cp->mode >= i2cSlaveReplying ?
+                                            i2cp->slaveReply : i2cp->slaveRx;
+    xfer->exception(i2cp);  /* in this case, i2cp->slaveErrors == 0 */
+  }
+  i2cp->mode = i2cIdle;
+  i2cp->targetAdr = i2cInvalidAdr;
 }
 
 
@@ -627,13 +629,13 @@ static void i2c_lld_serve_error_interrupt(I2CDriver *i2cp, uint16_t sr) {
   if (i2cp->mode == i2cSlaveReplying && (sr & I2C_ERROR_MASK) == I2C_SR1_AF) {
 qEvt(0xcccc);
     endSlaveReplyDMA(i2cp, 1);
+#if HAL_USE_I2C_STARTFIX
+    i2cp->config->disarmStartDetect();
+#endif
     i2cp->slaveReply->processMsg(i2cp);
     i2cp->targetAdr = i2cInvalidAdr;
     stopTimer(i2cp);
     i2cp->mode = i2cIdle;
-#if HAL_USE_I2C_STARTFIX
-    i2cp->config->disarmStartDetect();
-#endif
     return;
   }
 #endif
@@ -771,12 +773,12 @@ qEvt(0x2222);
       default:
         goto invalidTransition;
     }
-    i2cp->targetAdr = i2cInvalidAdr;
-    stopTimer(i2cp);
-    i2cp->mode = i2cIdle;
 #if HAL_USE_I2C_STARTFIX
     i2cp->config->disarmStartDetect();
 #endif
+    i2cp->targetAdr = i2cInvalidAdr;
+    stopTimer(i2cp);
+    i2cp->mode = i2cIdle;
     break;
 
    case I2C_EV1_SLAVE_TXADRMATCH:
@@ -905,9 +907,12 @@ doneWriting:
     }
     break;
 
+   case 0:   /* quietly ignore "uninteresting" events (i.e. i2c bus busy) */
+qEvt(0x0000);
+    break;
+
    default:  /* unhandled event -- abort transaction, flag unknown err */
 qEvt(0x9999);
-    i2cAbortOperation(i2cp);
     i2c_lld_serve_error_interrupt(i2cp, event);
   }
 }
@@ -929,6 +934,9 @@ void  i2c_lld_startDetected(I2CDriver *i2cp)
 {
 qEvt(0xdddd);
   switch (i2cp->mode) {
+    case i2cIdle:
+      i2cAbortOperation(i2cp);        /* quietly reset and reinit */
+      return;      
     case i2cSlaveRxing:
       endSlaveRxDMA(i2cp);
       i2cp->slaveRx->processMsg(i2cp);
@@ -936,7 +944,7 @@ qEvt(0xdddd);
     case i2cSlaveReplying:    /* Master did not NACK last transmitted byte */
       endSlaveReplyDMA(i2cp, 2);
       i2cp->slaveReply->processMsg(i2cp);
-      break;
+      break;    
     default:
       i2cAbortOperation(i2cp);        /* reset and reinit */
       reportErrs(i2cp, I2CD_UNKNOWN_ERROR + i2cp->mode);
