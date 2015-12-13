@@ -23,7 +23,7 @@
 /*===========================================================================*/
 
 typedef uint16_t i2cQindex;
-#define i2cQfull  (1<<15)    /* set MSB to indicate flag fifo is full */
+#define i2cQfull  (1<<15)    /* set MSB to indicate fifo is full */
 
 typedef enum {
   i2cMessage,       /* message received from bus master */
