@@ -725,7 +725,7 @@ qEvt(0x1111);
          i2cp->config->armStartDetect();
 #endif
          break;
-       case i2cSlaveRxing:
+       case i2cSlaveRxing:  /* repeated start without external start detector*/
          endSlaveRxDMA(i2cp);
          i2cp->slaveRx->processMsg(i2cp);
          break;
@@ -761,6 +761,9 @@ qEvt(0x1111);
 qEvt(0x2222);
     dp->CR1 = regCR1;            /* clear STOPF */
     i2cp->slaveErrors = I2CD_STOPPED; /* indicate that bus has been released */
+#if HAL_USE_I2C_STARTFIX
+    i2cp->config->disarmStartDetect();
+#endif
     switch (i2cp->mode) {
       case i2cSlaveRxing:
         endSlaveRxDMA(i2cp);
@@ -773,9 +776,6 @@ qEvt(0x2222);
       default:
         goto invalidTransition;
     }
-#if HAL_USE_I2C_STARTFIX
-    i2cp->config->disarmStartDetect();
-#endif
     i2cp->targetAdr = i2cInvalidAdr;
     stopTimer(i2cp);
     i2cp->mode = i2cIdle;
@@ -936,7 +936,7 @@ qEvt(0xdddd);
   switch (i2cp->mode) {
     case i2cIdle:
       i2cAbortOperation(i2cp);        /* quietly reset and reinit */
-      return;      
+      return;
     case i2cSlaveRxing:
       endSlaveRxDMA(i2cp);
       i2cp->slaveRx->processMsg(i2cp);
@@ -944,7 +944,7 @@ qEvt(0xdddd);
     case i2cSlaveReplying:    /* Master did not NACK last transmitted byte */
       endSlaveReplyDMA(i2cp, 2);
       i2cp->slaveReply->processMsg(i2cp);
-      break;    
+      break;
     default:
       i2cAbortOperation(i2cp);        /* reset and reinit */
       reportErrs(i2cp, I2CD_UNKNOWN_ERROR + i2cp->mode);
