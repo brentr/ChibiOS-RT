@@ -159,7 +159,7 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
  *
  * @return              pointer to i2cEvent
  *
- * @details This function is to called directly after i2cAwaitEvent()
+ * @details This function is called directly after i2cAwaitEvent()
  *          returns an i2cQuery event.  The next event will normally be
  *          i2cReplied.
  *
