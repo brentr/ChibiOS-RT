@@ -1377,7 +1377,6 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
   VirtualTimer vt;  /* Global timeout for the whole operation.*/
   chVTInit(&vt);
 
-  chSysLockFromIsr();
   if (timeout != TIME_INFINITE)
     chVTSetI(&vt, timeout, i2c_lld_safety_timeout, i2cp);
   i2cp->errors = 0;
@@ -1385,7 +1384,6 @@ static msg_t startMasterAction(I2CDriver *i2cp, systime_t timeout)
   chSchGoSleepS(THD_STATE_SUSPENDED);
   if (chVTIsArmedI(&vt))
     chVTResetI(&vt);
-  chSysUnlockFromIsr();
   return chThdSelf()->p_u.rdymsg;
 }
 
