@@ -199,7 +199,8 @@ void adc_lld_stop(ADCDriver *adcp) {
  * @notapi
  */
 void adc_lld_start_conversion(ADCDriver *adcp) {
-  uint32_t mode;
+  uint32_t mode, cr2;
+  ADC_TypeDef *adc = adcp->adc;
   const ADCConversionGroup *grpp = adcp->grpp;
 
   /* DMA setup.*/
@@ -219,25 +220,23 @@ void adc_lld_start_conversion(ADCDriver *adcp) {
   dmaStreamEnable(adcp->dmastp);
 
   /* ADC setup.*/
-  adcp->adc->SR    = 0;
-  adcp->adc->SMPR1 = grpp->smpr1;
-  adcp->adc->SMPR2 = grpp->smpr2;
-  adcp->adc->SMPR3 = grpp->smpr3;
-  adcp->adc->SQR1  = grpp->sqr1;
-  adcp->adc->SQR2  = grpp->sqr2;
-  adcp->adc->SQR3  = grpp->sqr3;
-  adcp->adc->SQR4  = grpp->sqr4;
-  adcp->adc->SQR5  = grpp->sqr5;
+  adc->SR    = 0;
+  adc->SMPR1 = grpp->smpr1;
+  adc->SMPR2 = grpp->smpr2;
+  adc->SMPR3 = grpp->smpr3;
+  adc->SQR1  = grpp->sqr1;
+  adc->SQR2  = grpp->sqr2;
+  adc->SQR3  = grpp->sqr3;
+  adc->SQR4  = grpp->sqr4;
+  adc->SQR5  = grpp->sqr5;
 
   /* ADC configuration and start, the start is performed using the method
      specified in the CR2 configuration, usually ADC_CR2_SWSTART.*/
-  adcp->adc->CR1   = grpp->cr1 | ADC_CR1_OVRIE | ADC_CR1_SCAN;
-  if ((grpp->cr2 & ADC_CR2_SWSTART) != 0)
-    adcp->adc->CR2 = grpp->cr2 | ADC_CR2_CONT  | ADC_CR2_DMA |
-                                 ADC_CR2_DDS   | ADC_CR2_ADON;
-  else
-    adcp->adc->CR2 = grpp->cr2 |                 ADC_CR2_DMA |
-                                 ADC_CR2_DDS   | ADC_CR2_ADON;
+  adc->CR1   = grpp->cr1 | ADC_CR1_OVRIE | ADC_CR1_SCAN;
+  cr2 = ADC_CR2_DMA | ADC_CR2_DDS | ADC_CR2_ADON;
+  if (grpp->cr2 & ADC_CR2_SWSTART)
+    cr2 |= ADC_CR2_CONT;
+  adc->CR2 = cr2 ^ grpp->cr2;  /* permit API to override all cr2 bits */
 }
 
 /**
