@@ -39,6 +39,13 @@
 /** @} */
 
 /**
+ * @name    Discontinuous conversions
+ * @{
+ */
+#define ADC_CR1_DISC(n) (((n)-1) << 13) /**< @brief Discontinuous samples   */
+/** @} */
+
+/**
  * @name    ADC clock divider settings
  * @{
  */

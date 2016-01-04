@@ -454,6 +454,31 @@
 #define rccResetTIM4() rccResetAPB1(RCC_APB1RSTR_TIM4RST)
 
 /**
+ * @brief   Enables the TIM4 peripheral clock.
+ *
+ * @param[in] lp        low power enable flag
+ *
+ * @api
+ */
+#define rccEnableTIM6(lp) rccEnableAPB1(RCC_APB1ENR_TIM6EN, lp)
+
+/**
+ * @brief   Disables the TIM4 peripheral clock.
+ *
+ * @param[in] lp        low power enable flag
+ *
+ * @api
+ */
+#define rccDisableTIM6(lp) rccDisableAPB1(RCC_APB1ENR_TIM6EN, lp)
+
+/**
+ * @brief   Resets the TIM6 peripheral.
+ *
+ * @api
+ */
+#define rccResetTIM6() rccResetAPB1(RCC_APB1RSTR_TIM6RST)
+
+/**
  * @brief   Enables the TIM9 peripheral clock.
  * @note    The @p lp parameter is ignored in this family.
  *
