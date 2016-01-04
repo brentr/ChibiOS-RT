@@ -399,6 +399,7 @@ void pwm_lld_init(void) {
 void pwm_lld_start(PWMDriver *pwmp) {
   uint32_t psc;
   uint32_t ccer;
+  const PWMConfig *config = pwmp->config;
 
   if (pwmp->state == PWM_STOP) {
     /* Clock activation and timer reset.*/
@@ -479,12 +480,14 @@ void pwm_lld_start(PWMDriver *pwmp) {
     }
 #endif
 
-    /* All channels configured in PWM1 mode with preload enabled and will
-       stay that way until the driver is stopped.*/
-    pwmp->tim->CCMR1 = STM32_TIM_CCMR1_OC1M(6) | STM32_TIM_CCMR1_OC1PE |
-                       STM32_TIM_CCMR1_OC2M(6) | STM32_TIM_CCMR1_OC2PE;
-    pwmp->tim->CCMR2 = STM32_TIM_CCMR2_OC3M(6) | STM32_TIM_CCMR2_OC3PE |
-                       STM32_TIM_CCMR2_OC4M(6) | STM32_TIM_CCMR2_OC4PE;
+    /* All channels configured in PWM1 or PWM2 mode with preload enabled and
+       will stay that way until the driver is stopped.*/
+    pwmp->tim->CCMR1 = STM32_TIM_CCMR1_OC1PE | STM32_TIM_CCMR1_OC2PE |
+      STM32_TIM_CCMR1_OC1M(config->channels[0].mode&PWM_OUTPUT_REVERSED ? 7:6) |
+      STM32_TIM_CCMR1_OC2M(config->channels[1].mode&PWM_OUTPUT_REVERSED ? 7:6);
+    pwmp->tim->CCMR2 = STM32_TIM_CCMR2_OC3PE | STM32_TIM_CCMR2_OC4PE |
+      STM32_TIM_CCMR2_OC3M(config->channels[2].mode&PWM_OUTPUT_REVERSED ? 7:6) |
+      STM32_TIM_CCMR2_OC4M(config->channels[3].mode&PWM_OUTPUT_REVERSED ? 7:6);
   }
   else {
     /* Driver re-configuration scenario, it must be stopped first.*/
@@ -497,17 +500,17 @@ void pwm_lld_start(PWMDriver *pwmp) {
   }
 
   /* Timer configuration.*/
-  psc = (pwmp->clock / pwmp->config->frequency) - 1;
+  psc = (pwmp->clock / config->frequency) - 1;
   chDbgAssert((psc <= 0xFFFF) &&
-              ((psc + 1) * pwmp->config->frequency) == pwmp->clock,
+              ((psc + 1) * config->frequency) == pwmp->clock,
               "pwm_lld_start(), #1", "invalid frequency");
   pwmp->tim->PSC  = (uint16_t)psc;
   pwmp->tim->ARR  = (uint16_t)(pwmp->period - 1);
-  pwmp->tim->CR2  = pwmp->config->cr2;
+  pwmp->tim->CR2  = config->cr2;
 
   /* Output enables and polarities setup.*/
   ccer = 0;
-  switch (pwmp->config->channels[0].mode & PWM_OUTPUT_MASK) {
+  switch (config->channels[0].mode & PWM_OUTPUT_MASK) {
   case PWM_OUTPUT_ACTIVE_LOW:
     ccer |= STM32_TIM_CCER_CC1P;
   case PWM_OUTPUT_ACTIVE_HIGH:
@@ -515,7 +518,7 @@ void pwm_lld_start(PWMDriver *pwmp) {
   default:
     ;
   }
-  switch (pwmp->config->channels[1].mode & PWM_OUTPUT_MASK) {
+  switch (config->channels[1].mode & PWM_OUTPUT_MASK) {
   case PWM_OUTPUT_ACTIVE_LOW:
     ccer |= STM32_TIM_CCER_CC2P;
   case PWM_OUTPUT_ACTIVE_HIGH:
@@ -523,7 +526,7 @@ void pwm_lld_start(PWMDriver *pwmp) {
   default:
     ;
   }
-  switch (pwmp->config->channels[2].mode & PWM_OUTPUT_MASK) {
+  switch (config->channels[2].mode & PWM_OUTPUT_MASK) {
   case PWM_OUTPUT_ACTIVE_LOW:
     ccer |= STM32_TIM_CCER_CC3P;
   case PWM_OUTPUT_ACTIVE_HIGH:
@@ -531,7 +534,7 @@ void pwm_lld_start(PWMDriver *pwmp) {
   default:
     ;
   }
-  switch (pwmp->config->channels[3].mode & PWM_OUTPUT_MASK) {
+  switch (config->channels[3].mode & PWM_OUTPUT_MASK) {
   case PWM_OUTPUT_ACTIVE_LOW:
     ccer |= STM32_TIM_CCER_CC4P;
   case PWM_OUTPUT_ACTIVE_HIGH:
@@ -549,7 +552,7 @@ void pwm_lld_start(PWMDriver *pwmp) {
 #if STM32_PWM_USE_TIM1 && STM32_PWM_USE_TIM8
   if ((&PWMD1 == pwmp) || (&PWMD8 == pwmp)) {
 #endif
-    switch (pwmp->config->channels[0].mode & PWM_COMPLEMENTARY_OUTPUT_MASK) {
+    switch (config->channels[0].mode & PWM_COMPLEMENTARY_OUTPUT_MASK) {
     case PWM_COMPLEMENTARY_OUTPUT_ACTIVE_LOW:
       ccer |= STM32_TIM_CCER_CC1NP;
     case PWM_COMPLEMENTARY_OUTPUT_ACTIVE_HIGH:
@@ -557,7 +560,7 @@ void pwm_lld_start(PWMDriver *pwmp) {
     default:
       ;
     }
-    switch (pwmp->config->channels[1].mode & PWM_COMPLEMENTARY_OUTPUT_MASK) {
+    switch (config->channels[1].mode & PWM_COMPLEMENTARY_OUTPUT_MASK) {
     case PWM_COMPLEMENTARY_OUTPUT_ACTIVE_LOW:
       ccer |= STM32_TIM_CCER_CC2NP;
     case PWM_COMPLEMENTARY_OUTPUT_ACTIVE_HIGH:
@@ -565,7 +568,7 @@ void pwm_lld_start(PWMDriver *pwmp) {
     default:
       ;
     }
-    switch (pwmp->config->channels[2].mode & PWM_COMPLEMENTARY_OUTPUT_MASK) {
+    switch (config->channels[2].mode & PWM_COMPLEMENTARY_OUTPUT_MASK) {
     case PWM_COMPLEMENTARY_OUTPUT_ACTIVE_LOW:
       ccer |= STM32_TIM_CCER_CC3NP;
     case PWM_COMPLEMENTARY_OUTPUT_ACTIVE_HIGH:
@@ -579,11 +582,11 @@ void pwm_lld_start(PWMDriver *pwmp) {
   pwmp->tim->CCER  = ccer;
   pwmp->tim->EGR   = STM32_TIM_EGR_UG;      /* Update event.                */
   pwmp->tim->SR    = 0;                     /* Clear pending IRQs.          */
-  pwmp->tim->DIER  = (pwmp->config->callback == NULL ? 0 : STM32_TIM_DIER_UIE) |
-                     (pwmp->config->dier & ~STM32_TIM_DIER_IRQ_MASK);
+  pwmp->tim->DIER  = (config->callback == NULL ? 0 : STM32_TIM_DIER_UIE) |
+                     (config->dier & ~STM32_TIM_DIER_IRQ_MASK);
 #if STM32_PWM_USE_TIM1 || STM32_PWM_USE_TIM8
 #if STM32_PWM_USE_ADVANCED
-  pwmp->tim->BDTR  = pwmp->config->bdtr | STM32_TIM_BDTR_MOE;
+  pwmp->tim->BDTR  = config->bdtr | STM32_TIM_BDTR_MOE;
 #else
   pwmp->tim->BDTR  = STM32_TIM_BDTR_MOE;
 #endif
