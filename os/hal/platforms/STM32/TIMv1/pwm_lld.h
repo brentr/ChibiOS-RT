@@ -39,12 +39,6 @@
 #define PWM_CHANNELS                            4
 
 /**
- * @brief   Output reversed (starts active, later inactive)
- * @note    This is an STM32-specific setting.
- */
-#define PWM_OUTPUT_REVERSED                     0x100
-
-/**
  * @brief   Complementary output modes mask.
  * @note    This is an STM32-specific setting.
  */
