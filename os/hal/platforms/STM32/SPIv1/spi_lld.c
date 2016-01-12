@@ -25,10 +25,12 @@
 #include "ch.h"
 #include "hal.h"
 
-//token pasting with two levels of expansion
+//token pasting with up to 5 levels of expansion
 #define PASTE(x,y)  PASTE_(x,y)
 #define PASTE_(x,y) PASTE__(x,y)
-#define PASTE__(x,y) x ## y
+#define PASTE__(x,y) PASTE___(x,y)
+#define PASTE___(x,y) PASTE____(x,y)
+#define PASTE____(x,y) x ## y
 
 
 #if HAL_USE_SPI || defined(__DOXYGEN__)
