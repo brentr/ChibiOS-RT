@@ -9,6 +9,9 @@
  * @{
  */
 
+#ifndef I2C_EVENT_H
+#define I2C_EVENT_H
+
 #include "ch.h"
 #include "hal.h"
 
@@ -173,3 +176,5 @@ const i2cEvent *i2cAnswer(I2CDriver *i2cp,
                           const uint8_t *replyBuffer, size_t size);
 
 /** @} */
+
+#endif
