@@ -54,12 +54,12 @@ register void *stack_pointer asm("sp");
 
 static inline void crash(void)
 {
-  chSysDisable();   //ignore subsequence interrupts
+  chSysDisable();   //ignore subsequent interrupts
   bkpt();           //use bt to see which trap was unhandled
   chSysHalt();      //restart applicaiton
 }
 
-#if __OPTIMIZE__ || defined(__DOXYGEN__)
+#if !defined(CH_DEBUG_FAULTS) || defined(__DOXYGEN__)
 
 /**
  * @brief   Generic Unhandled exceptions handler.
@@ -88,14 +88,14 @@ void _unhandled_exception(void) {crash();}
 * \version mcufreaks.blogspot.com
 */
 /*!
-* \note The following declaration is mandatory to avoid compiler errors. \n
+* \note The following declaration is mandatory to avoid compiler errors.
 * In the declaration below, we are assigning the assembler label __label_hardfaultGetContext__
 * to the entry point of __hardfaultGetContext__ function
 */
 void hardfaultGetContext(unsigned long* stackedContextPtr) asm("label_hardfaultGetContext");
 /*!
 * \fn void hardfaultGetContext(unsigned long* stackedContextPtr)
-* \brief Copies system stacked context into function local variables. \n
+* \brief Copies system stacked context into function local variables.
 * This function is called from asm-coded Interrupt Service Routine associated to HARD_FAULT exception
 * \param stackedContextPtr : Address of stack containing stacked processor context.
 */
@@ -139,7 +139,8 @@ _MMAR = (*((volatile unsigned long *)(0xE000ED34))) ;
 // Bus Fault Address Register
 _BFAR = (*((volatile unsigned long *)(0xE000ED38))) ;
 
-stack_pointer = stackedContextPtr; bkpt();  //'info locals' shows regs.  bt displays stack.
+stack_pointer = stackedContextPtr;
+bkpt(); //'info locals' shows regs, 'l *stacked_pc' shows fault site.
 chSysHalt();
 
 // The following code avoids compiler warning [-Wunused-but-set-variable]
@@ -169,15 +170,11 @@ void __attribute__((naked, interrupt)) _unhandled_HardFaultVector_exception(void
 {
   chSysDisable();
 __asm__ volatile	(
-" MOVS R0, #4 \n" /* Determine if processor uses PSP or MSP by checking bit.4 at LR register. */
-"	MOV R1, LR \n"
-"	TST R0, R1 \n"
-"	BEQ _IS_MSP \n" /* Jump to '_MSP' if processor uses MSP stack. */
-"	MRS R0, PSP \n" /* Prepare PSP content as parameter to the calling function below. */
-"	B label_hardfaultGetContext\n" /* pass PSP content as stackedContextPtr value. */
-"_IS_MSP: \n"
-"	MRS R0, MSP \n" /* Prepare MSP content as parameter to the calling function below. */
-"	B label_hardfaultGetContext"   /* pass MSP content as stackedContextPtr value. */
+" tst lr, #4    \n"
+" ite eq        \n"
+" mrseq r0, msp \n"
+" mrsne r0, psp \n"
+" B label_hardfaultGetContext"   /* pass MSP content as stackedContextPtr value. */
 :: );
 }
 
