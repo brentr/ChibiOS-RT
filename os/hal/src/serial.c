@@ -142,8 +142,8 @@ void sdObjectInit(SerialDriver *sdp, qnotify_t inotify, qnotify_t onotify) {
   sdp->vmt = &vmt;
   chEvtInit(&sdp->event);
   sdp->state = SD_STOP;
-  chIQInit(&sdp->iqueue, sdp->ib, SERIAL_BUFFERS_SIZE, inotify, sdp);
-  chOQInit(&sdp->oqueue, sdp->ob, SERIAL_BUFFERS_SIZE, onotify, sdp);
+  chIQInit(&sdp->iqueue, sdp->ib, SERIAL_IBUF_SIZE, inotify, sdp);
+  chOQInit(&sdp->oqueue, sdp->ob, SERIAL_OBUF_SIZE, onotify, sdp);
 }
 
 /**

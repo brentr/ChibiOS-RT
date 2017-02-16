@@ -31,6 +31,14 @@
 /* Driver constants.                                                         */
 /*===========================================================================*/
 
+#ifndef SERIAL_IBUF_SIZE
+#define SERIAL_IBUF_SIZE SERIAL_BUFFERS_SIZE
+#endif
+
+#ifndef SERIAL_OBUF_SIZE
+#define SERIAL_OBUF_SIZE SERIAL_BUFFERS_SIZE
+#endif
+
 /*===========================================================================*/
 /* Driver pre-compile time settings.                                         */
 /*===========================================================================*/
@@ -165,8 +173,8 @@
 #endif
 
 #if !STM32_SERIAL_USE_USART1 && !STM32_SERIAL_USE_USART2 &&                 \
-    !STM32_SERIAL_USE_USART3 && !STM32_SERIAL_USE_UART4  &&                 \
-    !STM32_SERIAL_USE_UART5  && !STM32_SERIAL_USE_USART6
+    !STM32_SERIAL_USE_USART3 && !STM32_SERIAL_USE_USART4 &&                 \
+    !STM32_SERIAL_USE_USART5 && !STM32_SERIAL_USE_USART6
 #error "SERIAL driver activated but no USART/UART peripheral assigned"
 #endif
 
@@ -244,12 +252,14 @@ typedef struct {
   /* Output queue.*/                                                        \
   OutputQueue               oqueue;                                         \
   /* Input circular buffer.*/                                               \
-  uint8_t                   ib[SERIAL_BUFFERS_SIZE];                        \
+  uint8_t                   ib[SERIAL_IBUF_SIZE];                           \
   /* Output circular buffer.*/                                              \
-  uint8_t                   ob[SERIAL_BUFFERS_SIZE];                        \
+  uint8_t                   ob[SERIAL_OBUF_SIZE];                           \
   /* End of the mandatory fields.*/                                         \
   /* Pointer to the USART registers block.*/                                \
-  USART_TypeDef             *usart;
+  USART_TypeDef             *usart;                                         \
+  /* Input handling hook */                                                 \
+  sdInputHandler            *inputHandler;
 
 /*===========================================================================*/
 /* Driver macros.                                                            */

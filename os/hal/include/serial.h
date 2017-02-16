@@ -108,6 +108,12 @@ typedef enum {
  */
 typedef struct SerialDriver SerialDriver;
 
+
+/**
+ * @brief   Input handling hook.
+ */
+typedef void sdInputHandler(SerialDriver *sdp, uint8_t b);
+
 #include "serial_lld.h"
 
 /**

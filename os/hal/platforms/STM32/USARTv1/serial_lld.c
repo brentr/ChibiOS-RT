@@ -170,7 +170,7 @@ static void serve_interrupt(SerialDriver *sdp) {
     /* Error condition detection.*/
     if (sr & (USART_SR_ORE | USART_SR_NE | USART_SR_FE  | USART_SR_PE))
       set_error(sdp, sr);
-    sdIncomingDataI(sdp, u->DR);
+    sdp->inputHandler(sdp, u->DR);
     sr = u->SR;
   }
   chSysUnlockFromIsr();
@@ -380,31 +380,37 @@ void sd_lld_init(void) {
 #if STM32_SERIAL_USE_USART1
   sdObjectInit(&SD1, NULL, notify1);
   SD1.usart = USART1;
+  SD1.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_USART2
   sdObjectInit(&SD2, NULL, notify2);
   SD2.usart = USART2;
+  SD2.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_USART3
   sdObjectInit(&SD3, NULL, notify3);
   SD3.usart = USART3;
+  SD3.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_UART4
   sdObjectInit(&SD4, NULL, notify4);
   SD4.usart = UART4;
+  SD4.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_UART5
   sdObjectInit(&SD5, NULL, notify5);
   SD5.usart = UART5;
+  SD5.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_USART6
   sdObjectInit(&SD6, NULL, notify6);
   SD6.usart = USART6;
+  SD6.inputHandler = sdIncomingDataI;
 #endif
 }
 
