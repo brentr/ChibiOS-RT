@@ -76,22 +76,27 @@
  *          different threads.
  *
  * @param[in] esp       pointer to the  @p EventSource structure
- * @param[out] elp      pointer to the @p EventListener structure
- * @param[in] mask      the mask of event flags to be ORed to the thread when
+ * @param[in] elp       pointer to the @p EventListener structure
+ * @param[in] events    events to be ORed to the thread when
  *                      the event source is broadcasted
+ * @param[in] wflags    mask of flags the listening thread is interested in
  *
  * @api
  */
-void chEvtRegisterMask(EventSource *esp, EventListener *elp, eventmask_t mask) {
+void chEvtRegisterMaskWithFlags(EventSource *esp,
+                                EventListener *elp,
+                                eventmask_t events,
+                                flagsmask_t wflags) {
 
-  chDbgCheck((esp != NULL) && (elp != NULL), "chEvtRegisterMask");
+  chDbgCheck((esp != NULL) && (elp != NULL), "chEvtRegisterMaskWithFlags");
 
   chSysLock();
   elp->el_next     = esp->es_next;
   esp->es_next     = elp;
   elp->el_listener = currp;
-  elp->el_mask     = mask;
-  elp->el_flags    = 0;
+  elp->el_events   = events;
+  elp->el_flags    = (flagsmask_t)0;
+  elp->el_wflags   = wflags;
   chSysUnlock();
 }
 
@@ -168,8 +173,8 @@ eventmask_t chEvtAddEvents(eventmask_t mask) {
  * @brief   Signals all the Event Listeners registered on the specified Event
  *          Source.
  * @details This function variants ORs the specified event flags to all the
- *          threads registered on the @p EventSource in addition to the event
- *          flags specified by the threads themselves in the
+ *          threads registered on the @p EventSource in addition to the
+ *          event flags specified by the threads themselves in the
  *          @p EventListener objects.
  * @post    This function does not reschedule so a call to a rescheduling
  *          function must be performed before unlocking the kernel. Note that
@@ -188,11 +193,20 @@ void chEvtBroadcastFlagsI(EventSource *esp, flagsmask_t flags) {
   chDbgCheck(esp != NULL, "chEvtBroadcastMaskI");
 
   elp = esp->es_next;
-  while (elp != (EventListener *)esp) {
-    elp->el_flags |= flags;
-    chEvtSignalI(elp->el_listener, elp->el_mask);
-    elp = elp->el_next;
-  }
+  if (flags)
+    while (elp != (EventListener *)esp) {
+      elp->el_flags |= flags;
+      if ((elp->el_flags & elp->el_wflags) != (flagsmask_t)0)
+        chEvtSignalI(elp->el_listener, elp->el_events);
+      elp = elp->el_next;
+    }
+  else
+  /* When flags == 0 the thread will always be signaled because the
+     source does not emit any flag.*/
+    while (elp != (EventListener *)esp) {
+      chEvtSignalI(elp->el_listener, elp->el_events);
+      elp = elp->el_next;
+    }
 }
 
 /**
