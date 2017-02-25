@@ -30,12 +30,13 @@ static WORKING_AREA(debugReaderArea, 128);
 static OutputQueue debugOutQ;
 static MUTEX_DECL(debugOutLock);
 
-static void resumeReader(void)
+static void resumeReader(OutputQueue *ignored)
 /*
   called whenever debug data is written
   to resume the queue reader
 */
 {
+  (void) ignored;
   chSysLock();
   if(debugReader->p_state == THD_STATE_WTQUEUE)
     chSchWakeupS(debugReader, 0);
@@ -81,7 +82,7 @@ Thread *debugPutInit(char *outq, size_t outqSize)
   return background thread
 */
 {
-  chOQInit(&debugOutQ, (uint8_t *)outq, outqSize, NULL, NULL);
+  chOQInit(&debugOutQ, (uint8_t *)outq, outqSize, resumeReader);
   return debugReader =
     chThdCreateStatic(debugReaderArea, sizeof(debugReaderArea),
                           LOWPRIO, debugReaderMain, NULL);
@@ -99,7 +100,6 @@ int debugPutc(int c)
     chOQPutTimeout( &debugOutQ, c, TIME_IMMEDIATE);
   }else
     c = -1;
-  resumeReader();
   chMtxUnlock();
   return c;
 }
@@ -122,7 +122,6 @@ size_t debugPut(const uint8_t *block, size_t n)
           n = 255;
         chOQPutTimeout( &debugOutQ, n, TIME_IMMEDIATE);
         chOQWriteTimeout( &debugOutQ, block, n, TIME_IMMEDIATE);
-        resumeReader();
         n++;
       }
     }else
@@ -257,7 +256,6 @@ size_t vDebugPrint(const char *fmt, va_list ap)
         qStream dbgStream = {&qVmt, len};
         chOQPutTimeout(&debugOutQ, len, TIME_IMMEDIATE);
         chvprintf((BaseSequentialStream *) &dbgStream, fmt, ap);
-        resumeReader();
         len++;
       }
     }else
