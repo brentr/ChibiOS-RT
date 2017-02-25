@@ -142,6 +142,18 @@ struct SerialDriver {
   /** @brief Virtual Methods Table.*/
   const struct SerialDriverVMT *vmt;
   _serial_driver_data
+  /* Driver state.*/
+  sdstate_t                 state;
+  /* Input handling hook */
+  sdInputHandler            *inputHandler;
+  /* Input queue.*/
+  InputQueue                iqueue;
+  /* Output queue.*/
+  OutputQueue               oqueue;
+  /* Input circular buffer.*/
+  uint8_t                   ib[SERIAL_IBUF_SIZE];
+  /* Output circular buffer.*/
+  uint8_t                   ob[SERIAL_OBUF_SIZE];
 };
 
 /*===========================================================================*/

@@ -245,21 +245,8 @@ typedef struct {
  */
 #define _serial_driver_data                                                 \
   _base_asynchronous_channel_data                                           \
-  /* Driver state.*/                                                        \
-  sdstate_t                 state;                                          \
-  /* Input queue.*/                                                         \
-  InputQueue                iqueue;                                         \
-  /* Output queue.*/                                                        \
-  OutputQueue               oqueue;                                         \
-  /* Input circular buffer.*/                                               \
-  uint8_t                   ib[SERIAL_IBUF_SIZE];                           \
-  /* Output circular buffer.*/                                              \
-  uint8_t                   ob[SERIAL_OBUF_SIZE];                           \
-  /* End of the mandatory fields.*/                                         \
   /* Pointer to the USART registers block.*/                                \
-  USART_TypeDef             *usart;                                         \
-  /* Input handling hook */                                                 \
-  sdInputHandler            *inputHandler;
+  USART_TypeDef             *usart;
 
 /*===========================================================================*/
 /* Driver macros.                                                            */

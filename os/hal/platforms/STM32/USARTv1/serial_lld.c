@@ -201,7 +201,7 @@ static void serve_interrupt(SerialDriver *sdp) {
 }
 
 #if STM32_SERIAL_USE_USART1 || defined(__DOXYGEN__)
-static void notify1(GenericQueue *qp) {
+static void notify1(OutputQueue *qp) {
 
   (void)qp;
   USART1->CR1 |= USART_CR1_TXEIE;
@@ -209,7 +209,7 @@ static void notify1(GenericQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_USART2 || defined(__DOXYGEN__)
-static void notify2(GenericQueue *qp) {
+static void notify2(OutputQueue *qp) {
 
   (void)qp;
   USART2->CR1 |= USART_CR1_TXEIE;
@@ -217,7 +217,7 @@ static void notify2(GenericQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_USART3 || defined(__DOXYGEN__)
-static void notify3(GenericQueue *qp) {
+static void notify3(OutputQueue *qp) {
 
   (void)qp;
   USART3->CR1 |= USART_CR1_TXEIE;
@@ -225,7 +225,7 @@ static void notify3(GenericQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_UART4 || defined(__DOXYGEN__)
-static void notify4(GenericQueue *qp) {
+static void notify4(OutputQueue *qp) {
 
   (void)qp;
   UART4->CR1 |= USART_CR1_TXEIE;
@@ -233,7 +233,7 @@ static void notify4(GenericQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_UART5 || defined(__DOXYGEN__)
-static void notify5(GenericQueue *qp) {
+static void notify5(OutputQueue *qp) {
 
   (void)qp;
   UART5->CR1 |= USART_CR1_TXEIE;
@@ -241,7 +241,7 @@ static void notify5(GenericQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_USART6 || defined(__DOXYGEN__)
-static void notify6(GenericQueue *qp) {
+static void notify6(OutputQueue *qp) {
 
   (void)qp;
   USART6->CR1 |= USART_CR1_TXEIE;
@@ -378,39 +378,33 @@ CH_IRQ_HANDLER(STM32_USART6_HANDLER) {
 void sd_lld_init(void) {
 
 #if STM32_SERIAL_USE_USART1
-  sdObjectInit(&SD1, NULL, notify1);
+  sdObjInit(&SD1, notify1);
   SD1.usart = USART1;
-  SD1.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_USART2
-  sdObjectInit(&SD2, NULL, notify2);
+  sdObjInit(&SD2, notify2);
   SD2.usart = USART2;
-  SD2.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_USART3
-  sdObjectInit(&SD3, NULL, notify3);
+  sdObjInit(&SD3, notify3);
   SD3.usart = USART3;
-  SD3.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_UART4
-  sdObjectInit(&SD4, NULL, notify4);
+  sdObjInit(&SD4, notify4);
   SD4.usart = UART4;
-  SD4.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_UART5
-  sdObjectInit(&SD5, NULL, notify5);
+  sdObjInit(&SD5, notify5);
   SD5.usart = UART5;
-  SD5.inputHandler = sdIncomingDataI;
 #endif
 
 #if STM32_SERIAL_USE_USART6
-  sdObjectInit(&SD6, NULL, notify6);
+  sdObjInit(&SD6, notify6);
   SD6.usart = USART6;
-  SD6.inputHandler = sdIncomingDataI;
 #endif
 }
 
