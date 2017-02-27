@@ -22,6 +22,10 @@
 
 #include "dccput.h"
 
+#ifndef _GenericQueueBase  //fallback when "fast" varient unavailable
+#define chOQWriteFast chOQWriteTimeout
+#endif
+
 /*
  * Small working area for the debug output thread
  */
@@ -37,10 +41,8 @@ static void resumeReader(OutputQueue *ignored)
 */
 {
   (void) ignored;
-  chSysLock();
   if(debugReader->p_state == THD_STATE_WTQUEUE)
     chSchWakeupS(debugReader, 0);
-  chSysUnlock();
 }
 
 
@@ -82,7 +84,7 @@ Thread *debugPutInit(char *outq, size_t outqSize)
   return background thread
 */
 {
-  chOQInit(&debugOutQ, (uint8_t *)outq, outqSize, resumeReader);
+  chOQInit(&debugOutQ, (uint8_t *)outq, outqSize, resumeReader, NULL);
   return debugReader =
     chThdCreateStatic(debugReaderArea, sizeof(debugReaderArea),
                           LOWPRIO, debugReaderMain, NULL);
@@ -121,7 +123,7 @@ size_t debugPut(const uint8_t *block, size_t n)
         if (n > 255)
           n = 255;
         chOQPutTimeout( &debugOutQ, n, TIME_IMMEDIATE);
-        chOQWriteTimeout( &debugOutQ, block, n, TIME_IMMEDIATE);
+        chOQWriteFast( &debugOutQ, block, n, TIME_IMMEDIATE);
         n++;
       }
     }else
@@ -219,7 +221,7 @@ static size_t qwrites(void *ip, const uint8_t *bp, size_t n) {
   if (n > qsp->space)
     n = qsp->space;
   qsp->space -= n;
-  chOQWriteTimeout( &debugOutQ, bp, n, TIME_IMMEDIATE);
+  chOQWriteFast( &debugOutQ, bp, n, TIME_IMMEDIATE);
   return n;
 }
 
