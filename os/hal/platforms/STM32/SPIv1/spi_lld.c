@@ -25,6 +25,14 @@
 #include "ch.h"
 #include "hal.h"
 
+//token pasting with up to 5 levels of expansion
+#define PASTE(x,y)  PASTE_(x,y)
+#define PASTE_(x,y) PASTE__(x,y)
+#define PASTE__(x,y) PASTE___(x,y)
+#define PASTE___(x,y) PASTE____(x,y)
+#define PASTE____(x,y) x ## y
+
+
 #if HAL_USE_SPI || defined(__DOXYGEN__)
 
 /*===========================================================================*/
@@ -296,6 +304,63 @@ void spi_lld_init(void) {
 #endif
 }
 
+
+static void spiEnable(SPIDriver *spip, uint8_t cr2)
+/* SPI setup and enable.*/
+{
+  spip->spi->CR1  = 0;
+  spip->spi->CR1  = spip->config->cr1 | SPI_CR1_MSTR | SPI_CR1_SSM |
+                    SPI_CR1_SSI;
+  spip->spi->CR2  = cr2;
+  spip->spi->CR1 |= SPI_CR1_SPE;
+}
+
+
+static inline void 
+  PASTE(startSpi,STM32_SPI_DMA)(SPIDriver *spip, uint32_t priority)
+// allocate dma resources for driver spip and start channel
+//   panics if DMA channel cannot be allocated
+{
+  if (!dmaStreamAllocate(spip->dmarx, priority,
+                         (stm32_dmaisr_t)spi_lld_serve_rx_interrupt,
+                         (void *)spip) ||
+      !dmaStreamAllocate(spip->dmatx, priority,
+                           (stm32_dmaisr_t)spi_lld_serve_tx_interrupt,
+                           (void *)spip))
+    chDbgAssert(true, "spi_lld_start()", "DMA stream already allocated");
+
+  /* Streams Allocated:  on to Configuration-specific DMA setup.*/
+  if ((spip->config->cr1 & SPI_CR1_DFF) == 0) {
+    /* Frame width is 8 bits or smaller.*/
+    spip->rxdmamode = (spip->rxdmamode & ~STM32_DMA_CR_SIZE_MASK) |
+                      STM32_DMA_CR_PSIZE_BYTE | STM32_DMA_CR_MSIZE_BYTE;
+    spip->txdmamode = (spip->txdmamode & ~STM32_DMA_CR_SIZE_MASK) |
+                      STM32_DMA_CR_PSIZE_BYTE | STM32_DMA_CR_MSIZE_BYTE;
+  }else{
+    /* Frame width is larger than 8 bits.*/
+    spip->rxdmamode = (spip->rxdmamode & ~STM32_DMA_CR_SIZE_MASK) |
+                      STM32_DMA_CR_PSIZE_HWORD | STM32_DMA_CR_MSIZE_HWORD;
+    spip->txdmamode = (spip->txdmamode & ~STM32_DMA_CR_SIZE_MASK) |
+                      STM32_DMA_CR_PSIZE_HWORD | STM32_DMA_CR_MSIZE_HWORD;
+  }
+    /* DMA setup.*/
+  dmaStreamSetPeripheral(spip->dmarx, &spip->spi->DR);
+  dmaStreamSetPeripheral(spip->dmatx, &spip->spi->DR);
+  spiEnable(spip, SPI_CR2_SSOE | SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+}
+
+
+static inline void
+  PASTE(startSpi,STM32_SPI_POLL)(SPIDriver *spip, uint32_t priority)
+// allocate polling resources for driver spip and start channel
+// a SPI channel started this way can only be polled
+//   via spi_lld_polled_exchange()
+{
+  (void) priority;
+  spiEnable(spip, SPI_CR2_SSOE);
+}
+
+
 /**
  * @brief   Configures and activates the SPI peripheral.
  *
@@ -309,128 +374,43 @@ void spi_lld_start(SPIDriver *spip) {
   if (spip->state == SPI_STOP) {
 #if STM32_SPI_USE_SPI1
     if (&SPID1 == spip) {
-      bool_t b;
-      b = dmaStreamAllocate(spip->dmarx,
-                            STM32_SPI_SPI1_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_rx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #1", "stream already allocated");
-      b = dmaStreamAllocate(spip->dmatx,
-                            STM32_SPI_SPI1_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_tx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #2", "stream already allocated");
       rccEnableSPI1(FALSE);
+      PASTE(startSpi,STM32_SPI_USE_SPI1)(spip, STM32_SPI_SPI1_IRQ_PRIORITY);
     }
 #endif
 #if STM32_SPI_USE_SPI2
     if (&SPID2 == spip) {
-      bool_t b;
-      b = dmaStreamAllocate(spip->dmarx,
-                            STM32_SPI_SPI2_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_rx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #3", "stream already allocated");
-      b = dmaStreamAllocate(spip->dmatx,
-                            STM32_SPI_SPI2_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_tx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #4", "stream already allocated");
       rccEnableSPI2(FALSE);
+      PASTE(startSpi,STM32_SPI_USE_SPI2)(spip, STM32_SPI_SPI2_IRQ_PRIORITY);
     }
 #endif
 #if STM32_SPI_USE_SPI3
     if (&SPID3 == spip) {
-      bool_t b;
-      b = dmaStreamAllocate(spip->dmarx,
-                            STM32_SPI_SPI3_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_rx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #5", "stream already allocated");
-      b = dmaStreamAllocate(spip->dmatx,
-                            STM32_SPI_SPI3_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_tx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #6", "stream already allocated");
       rccEnableSPI3(FALSE);
+      PASTE(startSpi,STM32_SPI_USE_SPI3)(spip, STM32_SPI_SPI3_IRQ_PRIORITY);
     }
 #endif
 #if STM32_SPI_USE_SPI4
     if (&SPID4 == spip) {
-      bool_t b;
-      b = dmaStreamAllocate(spip->dmarx,
-                            STM32_SPI_SPI4_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_rx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #7", "stream already allocated");
-      b = dmaStreamAllocate(spip->dmatx,
-                            STM32_SPI_SPI4_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_tx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #8", "stream already allocated");
       rccEnableSPI4(FALSE);
+      PASTE(startSpi,STM32_SPI_USE_SPI4)(spip, STM32_SPI_SPI4_IRQ_PRIORITY);
     }
 #endif
 #if STM32_SPI_USE_SPI5
     if (&SPID5 == spip) {
-      bool_t b;
-      b = dmaStreamAllocate(spip->dmarx,
-                            STM32_SPI_SPI5_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_rx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #9", "stream already allocated");
-      b = dmaStreamAllocate(spip->dmatx,
-                            STM32_SPI_SPI5_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_tx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #10", "stream already allocated");
       rccEnableSPI5(FALSE);
+      PASTE(startSpi,STM32_SPI_USE_SPI5)(spip, STM32_SPI_SPI5_IRQ_PRIORITY);
     }
 #endif
 #if STM32_SPI_USE_SPI6
     if (&SPID6 == spip) {
-      bool_t b;
-      b = dmaStreamAllocate(spip->dmarx,
-                            STM32_SPI_SPI6_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_rx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #11", "stream already allocated");
-      b = dmaStreamAllocate(spip->dmatx,
-                            STM32_SPI_SPI6_IRQ_PRIORITY,
-                            (stm32_dmaisr_t)spi_lld_serve_tx_interrupt,
-                            (void *)spip);
-      chDbgAssert(!b, "spi_lld_start(), #12", "stream already allocated");
       rccEnableSPI6(FALSE);
+      PASTE(startSpi,STM32_SPI_USE_SPI6)(spip, STM32_SPI_SPI6_IRQ_PRIORITY);
     }
 #endif
-
-    /* DMA setup.*/
-    dmaStreamSetPeripheral(spip->dmarx, &spip->spi->DR);
-    dmaStreamSetPeripheral(spip->dmatx, &spip->spi->DR);
   }
-
-  /* Configuration-specific DMA setup.*/
-  if ((spip->config->cr1 & SPI_CR1_DFF) == 0) {
-    /* Frame width is 8 bits or smaller.*/
-    spip->rxdmamode = (spip->rxdmamode & ~STM32_DMA_CR_SIZE_MASK) |
-                      STM32_DMA_CR_PSIZE_BYTE | STM32_DMA_CR_MSIZE_BYTE;
-    spip->txdmamode = (spip->txdmamode & ~STM32_DMA_CR_SIZE_MASK) |
-                      STM32_DMA_CR_PSIZE_BYTE | STM32_DMA_CR_MSIZE_BYTE;
-  }
-  else {
-    /* Frame width is larger than 8 bits.*/
-    spip->rxdmamode = (spip->rxdmamode & ~STM32_DMA_CR_SIZE_MASK) |
-                      STM32_DMA_CR_PSIZE_HWORD | STM32_DMA_CR_MSIZE_HWORD;
-    spip->txdmamode = (spip->txdmamode & ~STM32_DMA_CR_SIZE_MASK) |
-                      STM32_DMA_CR_PSIZE_HWORD | STM32_DMA_CR_MSIZE_HWORD;
-  }
-  /* SPI setup and enable.*/
-  spip->spi->CR1  = 0;
-  spip->spi->CR1  = spip->config->cr1 | SPI_CR1_MSTR | SPI_CR1_SSM |
-                    SPI_CR1_SSI;
-  spip->spi->CR2  = SPI_CR2_SSOE | SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN;
-  spip->spi->CR1 |= SPI_CR1_SPE;
 }
+
 
 /**
  * @brief   Deactivates the SPI peripheral.
@@ -445,10 +425,12 @@ void spi_lld_stop(SPIDriver *spip) {
   if (spip->state == SPI_READY) {
 
     /* SPI disable.*/
+    if (spip->spi->CR2 & (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN)) {
+      dmaStreamRelease(spip->dmarx);
+      dmaStreamRelease(spip->dmatx);
+    }
     spip->spi->CR1 = 0;
     spip->spi->CR2 = 0;
-    dmaStreamRelease(spip->dmarx);
-    dmaStreamRelease(spip->dmatx);
 
 #if STM32_SPI_USE_SPI1
     if (&SPID1 == spip)
