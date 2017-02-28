@@ -177,11 +177,10 @@ static void usart_start(UARTDriver *uartp) {
   u->CR2 = uartp->config->cr2 | USART_CR2_LBDIE;
   u->CR3 = uartp->config->cr3 | USART_CR3_DMAT | USART_CR3_DMAR |
                                 USART_CR3_EIE;
-  if (uartp->config->txend2_cb == NULL)
-    cr1 = USART_CR1_UE | USART_CR1_PEIE | USART_CR1_TE | USART_CR1_RE;
-  else
-    cr1 = USART_CR1_UE | USART_CR1_PEIE | USART_CR1_TE | USART_CR1_RE |
-          USART_CR1_TCIE;
+
+  /* Mustn't ever set TCIE here - if done, it causes an immediate
+     interrupt.*/
+  cr1 = USART_CR1_UE | USART_CR1_PEIE | USART_CR1_TE | USART_CR1_RE;
   u->CR1 = uartp->config->cr1 | cr1;
 
   /* Starting the receiver idle loop.*/
@@ -266,6 +265,7 @@ static void uart_lld_serve_tx_end_irq(UARTDriver *uartp, uint32_t flags) {
 static void serve_usart_irq(UARTDriver *uartp) {
   uint32_t isr;
   USART_TypeDef *u = uartp->usart;
+  uint32_t cr1 = u->CR1;
   
   /* Reading and clearing status.*/
   isr = u->ISR;
@@ -276,7 +276,11 @@ static void serve_usart_irq(UARTDriver *uartp) {
     if (uartp->config->rxerr_cb != NULL)
       uartp->config->rxerr_cb(uartp, translate_errors(isr));
   }
-  if (isr & USART_ISR_TC) {
+
+  if ((isr & USART_ISR_TC) && (cr1 & USART_CR1_TCIE)) {
+    /* TC interrupt disabled.*/
+    u->CR1 = cr1 & ~USART_CR1_TCIE;
+
     /* End of transmission, a callback is generated.*/
     if (uartp->config->txend2_cb != NULL)
       uartp->config->txend2_cb(uartp);
@@ -520,11 +524,20 @@ void uart_lld_stop(UARTDriver *uartp) {
  */
 void uart_lld_start_send(UARTDriver *uartp, size_t n, const void *txbuf) {
 
-  /* TX DMA channel preparation and start.*/
+  /* TX DMA channel preparation.*/
   dmaStreamSetMemory0(uartp->dmatx, txbuf);
   dmaStreamSetTransactionSize(uartp->dmatx, n);
   dmaStreamSetMode(uartp->dmatx, uartp->dmamode    | STM32_DMA_CR_DIR_M2P |
                                  STM32_DMA_CR_MINC | STM32_DMA_CR_TCIE);
+
+  /* Only enable TC interrupt if there's a callback attached to it.
+     Also we need to clear TC flag which could be set before. */
+  if (uartp->config->txend2_cb != NULL) {
+    uartp->usart->ICR = USART_ICR_TCCF;
+    uartp->usart->CR1 |= USART_CR1_TCIE;
+  }
+
+  /* Starting transfer.*/
   dmaStreamEnable(uartp->dmatx);
 }
 
@@ -542,6 +555,7 @@ void uart_lld_start_send(UARTDriver *uartp, size_t n, const void *txbuf) {
 size_t uart_lld_stop_send(UARTDriver *uartp) {
 
   dmaStreamDisable(uartp->dmatx);
+
   return dmaStreamGetTransactionSize(uartp->dmatx);
 }
 
@@ -561,11 +575,13 @@ void uart_lld_start_receive(UARTDriver *uartp, size_t n, void *rxbuf) {
   /* Stopping previous activity (idle state).*/
   dmaStreamDisable(uartp->dmarx);
 
-  /* RX DMA channel preparation and start.*/
+  /* RX DMA channel preparation.*/
   dmaStreamSetMemory0(uartp->dmarx, rxbuf);
   dmaStreamSetTransactionSize(uartp->dmarx, n);
   dmaStreamSetMode(uartp->dmarx, uartp->dmamode    | STM32_DMA_CR_DIR_P2M |
                                  STM32_DMA_CR_MINC | STM32_DMA_CR_TCIE);
+
+  /* Starting transfer.*/
   dmaStreamEnable(uartp->dmarx);
 }
 
@@ -586,6 +602,7 @@ size_t uart_lld_stop_receive(UARTDriver *uartp) {
   dmaStreamDisable(uartp->dmarx);
   n = dmaStreamGetTransactionSize(uartp->dmarx);
   set_rx_idle_loop(uartp);
+
   return n;
 }
 

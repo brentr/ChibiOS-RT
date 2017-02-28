@@ -111,7 +111,7 @@ static uint32_t usb_pm_alloc(USBDriver *usbp, size_t size) {
   uint32_t next;
 
   next = usbp->pmnext;
-  usbp->pmnext += size;
+  usbp->pmnext += (size + 1) & ~1;
   chDbgAssert(usbp->pmnext <= USB_PMA_SIZE, "usb_pm_alloc(), #1", "PMA overflow");
   return next;
 }
@@ -503,7 +503,7 @@ void usb_lld_reset(USBDriver *usbp) {
   uint32_t cntr;
 
   /* Post reset initialization.*/
-  STM32_USB->BTABLE = 0;
+  STM32_USB->BTABLE = BTABLE_ADDR;
   STM32_USB->ISTR   = 0;
   STM32_USB->DADDR  = DADDR_EF;
   cntr              = /*CNTR_ESOFM | */ CNTR_RESETM  | CNTR_SUSPM |

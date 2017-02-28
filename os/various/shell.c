@@ -109,7 +109,7 @@ static void cmd_systime(BaseSequentialStream *chp, int argc, char *argv[]) {
 /**
  * @brief   Array of the default commands.
  */
-static ShellCommand local_commands[] = {
+static const ShellCommand local_commands[] = {
   {"info", cmd_info},
   {"systime", cmd_systime},
   {NULL, NULL}
@@ -284,7 +284,7 @@ bool_t shellGetLine(BaseSequentialStream *chp, char *line, unsigned size) {
       chprintf(chp, "^D");
       return TRUE;
     }
-    if (c == 8) {
+    if ((c == 8) || (c == 127)) {
       if (p != line) {
         chSequentialStreamPut(chp, c);
         chSequentialStreamPut(chp, 0x20);

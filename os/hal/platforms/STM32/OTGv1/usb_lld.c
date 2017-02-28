@@ -150,32 +150,11 @@ static void otg_disable_ep(USBDriver *usbp) {
   unsigned i;
 
   for (i = 0; i <= usbp->otgparams->num_endpoints; i++) {
-    /* Disable only if enabled because this sentence in the manual:
-       "The application must set this bit only if Endpoint Enable is
-        already set for this endpoint".*/
-    if ((otgp->ie[i].DIEPCTL & DIEPCTL_EPENA) != 0) {
-      otgp->ie[i].DIEPCTL = DIEPCTL_EPDIS;
-      /* Wait for endpoint disable.*/
-      while (!(otgp->ie[i].DIEPINT & DIEPINT_EPDISD))
-        ;
-    }
-    else
-      otgp->ie[i].DIEPCTL = 0;
+    otgp->ie[i].DIEPCTL = 0;
     otgp->ie[i].DIEPTSIZ = 0;
     otgp->ie[i].DIEPINT = 0xFFFFFFFF;
-    /* Disable only if enabled because this sentence in the manual:
-       "The application must set this bit only if Endpoint Enable is
-        already set for this endpoint".
-       Note that the attempt to disable the OUT EP0 is ignored by the
-       hardware but the code is simpler this way.*/
-    if ((otgp->oe[i].DOEPCTL & DOEPCTL_EPENA) != 0) {
-      otgp->oe[i].DOEPCTL = DOEPCTL_EPDIS;
-      /* Wait for endpoint disable.*/
-      while (!(otgp->oe[i].DOEPINT & DOEPINT_OTEPDIS))
-        ;
-    }
-    else
-      otgp->oe[i].DOEPCTL = 0;
+
+    otgp->oe[i].DOEPCTL = 0;
     otgp->oe[i].DOEPTSIZ = 0;
     otgp->oe[i].DOEPINT = 0xFFFFFFFF;
   }
@@ -533,11 +512,11 @@ static bool_t otg_txfifo_handler(USBDriver *usbp, usbep_t ep) {
                                  n);
       usbp->epc[ep]->in_state->mode.linear.txbuf += n;
     }
-    usbp->epc[ep]->in_state->txcnt += n;
-  }
 #if STM32_USB_OTGFIFO_FILL_BASEPRI
   __set_BASEPRI(0);
 #endif
+    usbp->epc[ep]->in_state->txcnt += n;
+  }
 }
 
 /**
@@ -642,7 +621,8 @@ static void usb_lld_serve_interrupt(USBDriver *usbp) {
   stm32_otg_t *otgp = usbp->otg;
   uint32_t sts, src;
 
-  sts = otgp->GINTSTS & otgp->GINTMSK;
+  sts  = otgp->GINTSTS;
+  sts &= otgp->GINTMSK;
   otgp->GINTSTS = sts;
 
   /* Reset interrupt handling.*/
@@ -765,8 +745,6 @@ static msg_t usb_lld_pump(void *p) {
     }
     chSysLock();
   }
-  chSysUnlock();
-  return 0;
 }
 
 #if STM32_USB_USE_OTG1 || defined(__DOXYGEN__)
@@ -835,7 +813,7 @@ void usb_lld_init(void) {
                     (uint8_t *)wsp + sizeof(Thread),
                     CH_THREAD_FILL_VALUE);
     _thread_memfill((uint8_t *)wsp + sizeof(Thread),
-                    (uint8_t *)wsp + sizeof(USBD1.wa_pump) - sizeof(Thread),
+                    (uint8_t *)wsp + sizeof(USBD1.wa_pump),
                     CH_STACK_FILL_VALUE);
   }
 #endif
@@ -857,7 +835,7 @@ void usb_lld_init(void) {
                     (uint8_t *)wsp + sizeof(Thread),
                     CH_THREAD_FILL_VALUE);
     _thread_memfill((uint8_t *)wsp + sizeof(Thread),
-                    (uint8_t *)wsp + sizeof(USBD2.wa_pump) - sizeof(Thread),
+                    (uint8_t *)wsp + sizeof(USBD2.wa_pump),
                     CH_STACK_FILL_VALUE);
   }
 #endif
@@ -985,17 +963,17 @@ void usb_lld_stop(USBDriver *usbp) {
     otgp->GAHBCFG    = 0;
     otgp->GCCFG      = 0;
 
-#if STM32_USB_USE_USB1
+#if STM32_USB_USE_OTG1
     if (&USBD1 == usbp) {
       nvicDisableVector(STM32_OTG1_NUMBER);
-      rccDisableOTG1(FALSE);
+      rccDisableOTG_FS(FALSE);
     }
 #endif
 
-#if STM32_USB_USE_USB2
+#if STM32_USB_USE_OTG2
     if (&USBD2 == usbp) {
       nvicDisableVector(STM32_OTG2_NUMBER);
-      rccDisableOTG2(FALSE);
+      rccDisableOTG_HS(FALSE);
     }
 #endif
   }

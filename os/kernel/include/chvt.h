@@ -250,7 +250,7 @@ typedef struct {
  * @api
  */
 #define chTimeIsWithin(start, end)                                          \
-  (chTimeElapsedSince(start) < ((end) - (start)))
+  ((systime_t)chTimeElapsedSince(start) < (systime_t)((end) - (start)))
 /** @} */
 
 extern VTList vtlist;

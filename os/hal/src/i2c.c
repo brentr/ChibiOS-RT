@@ -210,7 +210,6 @@ msg_t i2cMasterTransmitTimeout(I2CDriver *i2cp,
   return rdymsg;
 }
 
-
 /**
  * @brief   Receives data from the I2C bus.
  *

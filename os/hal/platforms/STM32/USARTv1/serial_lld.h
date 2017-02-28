@@ -173,8 +173,8 @@
 #endif
 
 #if !STM32_SERIAL_USE_USART1 && !STM32_SERIAL_USE_USART2 &&                 \
-    !STM32_SERIAL_USE_USART3 && !STM32_SERIAL_USE_USART4 &&                 \
-    !STM32_SERIAL_USE_USART5 && !STM32_SERIAL_USE_USART6
+    !STM32_SERIAL_USE_USART3 && !STM32_SERIAL_USE_UART4  &&                 \
+    !STM32_SERIAL_USE_UART5  && !STM32_SERIAL_USE_USART6
 #error "SERIAL driver activated but no USART/UART peripheral assigned"
 #endif
 

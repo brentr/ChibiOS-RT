@@ -131,7 +131,6 @@ typedef enum {
 #define i2cMasterReceive(i2cp, addr, rxbuf, rxbytes)                        \
   (i2cMasterReceiveTimeout(i2cp, addr, rxbuf, rxbytes, TIME_INFINITE))
 
-
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/
@@ -163,7 +162,6 @@ extern "C" {
   void i2cAcquireBus(I2CDriver *i2cp);
   void i2cReleaseBus(I2CDriver *i2cp);
 #endif /* I2C_USE_MUTUAL_EXCLUSION */
-
 
 #ifdef __cplusplus
 }

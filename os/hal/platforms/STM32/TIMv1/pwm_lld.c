@@ -480,12 +480,12 @@ void pwm_lld_start(PWMDriver *pwmp) {
     }
 #endif
 
-    /* All channels configured in PWM1 or PWM2 mode with preload enabled and
-       will stay that way until the driver is stopped.*/
-    pwmp->tim->CCMR1 = STM32_TIM_CCMR1_OC1PE   | STM32_TIM_CCMR1_OC2PE |
-                       STM32_TIM_CCMR1_OC1M(6) | STM32_TIM_CCMR1_OC2M(6);
-    pwmp->tim->CCMR2 = STM32_TIM_CCMR2_OC3PE   | STM32_TIM_CCMR2_OC4PE |
-                       STM32_TIM_CCMR2_OC3M(6) | STM32_TIM_CCMR2_OC4M(6);
+    /* All channels configured in PWM1 mode with preload enabled and will
+       stay that way until the driver is stopped.*/
+    pwmp->tim->CCMR1 = STM32_TIM_CCMR1_OC1M(6) | STM32_TIM_CCMR1_OC1PE |
+                       STM32_TIM_CCMR1_OC2M(6) | STM32_TIM_CCMR1_OC2PE;
+    pwmp->tim->CCMR2 = STM32_TIM_CCMR2_OC3M(6) | STM32_TIM_CCMR2_OC3PE |
+                       STM32_TIM_CCMR2_OC4M(6) | STM32_TIM_CCMR2_OC4PE;
   }
   else {
     /* Driver re-configuration scenario, it must be stopped first.*/

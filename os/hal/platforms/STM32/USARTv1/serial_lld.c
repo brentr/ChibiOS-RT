@@ -165,21 +165,17 @@ static void serve_interrupt(SerialDriver *sdp) {
   }
 
   /* Data available.*/
-  while (sr & USART_SR_RXNE) {
+  while (sr & (USART_SR_RXNE | USART_SR_ORE | USART_SR_NE | USART_SR_FE |
+               USART_SR_PE)) {
+    uint8_t b = u->DR;
     chSysLockFromIsr();
     /* Error condition detection.*/
-    if (sr & (USART_SR_ORE | USART_SR_NE | USART_SR_FE | USART_SR_PE))
+    if (sr & (USART_SR_ORE | USART_SR_NE | USART_SR_FE  | USART_SR_PE))
       set_error(sdp, sr);
-    sdp->inputHandler(sdp, u->DR);
+    if (sr & USART_SR_RXNE)
+      sdp->inputHandler(sdp, b);
     chSysUnlockFromIsr();
     sr = u->SR;
-  }
-  if (sr & (USART_SR_ORE | USART_SR_NE | USART_SR_FE | USART_SR_PE)) {
-    volatile uint16_t clearError = u->DR;
-    (void)clearError;
-    chSysLockFromIsr();
-    set_error(sdp, sr);
-    chSysUnlockFromIsr();
   }
 
   /* Physical transmission end.*/

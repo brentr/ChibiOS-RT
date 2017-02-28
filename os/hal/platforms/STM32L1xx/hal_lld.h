@@ -152,10 +152,10 @@
 #define STM32_MCOSEL_LSE        (7 << 24)   /**< LSE clock on MCO pin.      */
 
 #define STM32_MCOPRE_DIV1       (0 << 28)   /**< MCO divided by 1.          */
-#define STM32_MCOPRE_DIV2       (1 << 28)   /**< MCO divided by 1.          */
-#define STM32_MCOPRE_DIV4       (2 << 28)   /**< MCO divided by 1.          */
-#define STM32_MCOPRE_DIV8       (3 << 28)   /**< MCO divided by 1.          */
-#define STM32_MCOPRE_DIV16      (4 << 28)   /**< MCO divided by 1.          */
+#define STM32_MCOPRE_DIV2       (1 << 28)   /**< MCO divided by 2.          */
+#define STM32_MCOPRE_DIV4       (2 << 28)   /**< MCO divided by 4.          */
+#define STM32_MCOPRE_DIV8       (3 << 28)   /**< MCO divided by 8.          */
+#define STM32_MCOPRE_DIV16      (4 << 28)   /**< MCO divided by 16.         */
 /** @} */
 
 /**
@@ -304,7 +304,7 @@
 /**
  * @brief   Enables or disables the LSE clock source.
  */
-#if !defined(STM32_HSE_ENABLED) || defined(__DOXYGEN__)
+#if !defined(STM32_LSE_ENABLED) || defined(__DOXYGEN__)
 #define STM32_LSE_ENABLED           FALSE
 #endif
 
@@ -538,9 +538,15 @@
 /* LSI related checks.*/
 #if STM32_LSI_ENABLED
 #else /* !STM32_LSI_ENABLED */
-#if STM32_RTCCLK == STM32_LSICLK
-#error "required LSI clock is not enabled"
+
+#if STM32_MCOSEL == STM32_MCOSEL_LSI
+#error "LSI not enabled, required by STM32_MCOSEL"
 #endif
+
+#if STM32_RTCSEL == STM32_RTCSEL_LSI
+#error "LSI not enabled, required by STM32_RTCSEL"
+#endif
+
 #endif /* !STM32_LSI_ENABLED */
 
 /* LSE related checks.*/
@@ -551,10 +557,17 @@
 #if (STM32_LSECLK < 1000) || (STM32_LSECLK > 1000000)
 #error "STM32_LSECLK outside acceptable range (1...1000kHz)"
 #endif
+
 #else /* !STM32_LSE_ENABLED */
-#if STM32_RTCCLK == STM32_LSECLK
-#error "required LSE clock is not enabled"
+
+#if STM32_MCOSEL == STM32_MCOSEL_LSE
+#error "LSE not enabled, required by STM32_MCOSEL"
 #endif
+
+#if STM32_RTCSEL == STM32_RTCSEL_LSE
+#error "LSE not enabled, required by STM32_RTCSEL"
+#endif
+
 #endif /* !STM32_LSE_ENABLED */
 
 /* PLL related checks.*/
@@ -763,7 +776,7 @@
 #endif
 
 /**
- * @brief   MCO divider clock.
+ * @brief   MCO clock before divider.
  */
 #if (STM32_MCOSEL == STM32_MCOSEL_NOCLOCK) || defined(__DOXYGEN__)
 #define STM32_MCODIVCLK             0

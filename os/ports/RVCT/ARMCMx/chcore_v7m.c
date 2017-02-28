@@ -57,10 +57,10 @@ CH_IRQ_HANDLER(SysTickVector) {
 
 #if !CORTEX_SIMPLIFIED_PRIORITY || defined(__DOXYGEN__)
 /**
- * @brief   SVC vector.
- * @details The SVC vector is used for exception mode re-entering after a
+ * @brief   SVCall vector.
+ * @details The SVCall vector is used for exception mode re-entering after a
  *          context switch.
- * @note    The PendSV vector is only used in advanced kernel mode.
+ * @note    The SVCallVector vector is only used in advanced kernel mode.
  */
 void SVCallVector(void) {
   struct extctx *ctxp;
@@ -168,9 +168,12 @@ void _port_irq_epilogue(void) {
     ctxp = (struct extctx *)psp;
 
 #if CORTEX_USE_FPU
-      /* Triggering a lazy FPU state save.*/
-      register uint32_t fpscr __asm("fpscr");
-      ctxp->r0 = (regarm_t)fpscr;
+    /* Enforcing a lazy FPU state save. Note, it goes in the original
+       context because the FPCAR register has not been modified.*/
+    {
+      volatile register uint32_t fpscr __asm("fpscr");
+      (void)fpscr;
+    }
 #endif
 
     /* Adding an artificial exception return context, there is no need to

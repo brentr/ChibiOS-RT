@@ -142,8 +142,8 @@ void chMtxLockS(Mutex *mp) {
         prio_insert(dequeue(tp), (ThreadsQueue *)tp->p_u.wtobjp);
         tp = ((Mutex *)tp->p_u.wtobjp)->m_owner;
         continue;
-#if CH_USE_CONDVARS |                                                       \
-    (CH_USE_SEMAPHORES && CH_USE_SEMAPHORES_PRIORITY) |                     \
+#if CH_USE_CONDVARS ||                                                      \
+    (CH_USE_SEMAPHORES && CH_USE_SEMAPHORES_PRIORITY) ||                    \
     (CH_USE_MESSAGES && CH_USE_MESSAGES_PRIORITY)
 #if CH_USE_CONDVARS
       case THD_STATE_WTCOND:
@@ -294,7 +294,13 @@ Mutex *chMtxUnlock(void) {
     ump->m_owner = tp;
     ump->m_next = tp->p_mtxlist;
     tp->p_mtxlist = ump;
-    chSchWakeupS(tp, RDY_OK);
+      
+    /* Note, not using chSchWakeupS() becuase that function expects the
+       current thread to have the higher or equal priority than the ones
+       in the ready list. This is not necessarily true here because we
+       just changed priority.*/
+    chSchReadyI(tp);
+    chSchRescheduleS();
   }
   else
     ump->m_owner = NULL;

@@ -71,9 +71,110 @@
 *** Releases                                                              ***
 *****************************************************************************
 
+*** 2.6.10 ***
+- FIX: Fixed missing const qualifier in local shell commands array (bug #797).
+- FIX: Fixed double empty lines in HAL (bug #794).
+- FIX: Fixed STM32F105 port not compiling. (bug #782).
+- FIX: Fixed wrong HSE checks and PLL2 enable switch in STM32F105 and
+       STM32F107 port (bug #779).
+- FIX: Fixed wrong check in win32 simulator serial driver (bug #765).
+- FIX: Fixed errors in documentation related to OTG peripheral switches 
+       (bug #753).
+- FIX: Fixed wrong conditional branches in _adc_isr_error_code (bug #751).
+- FIX: Fixed wrong comments and indent in STM32F4xx hal_lld.h (bug #746).
+- FIX: Fixed wrong indent in STM32F4xx hal_lld.h (bug #743).
+- FIX: Removed unused macros in STM32F4xx hal_lld.h (bug #742).
+- NEW: Cortex-M7 support in the kernel, generic demo application added.
+- FIX: Fixed bug in chSchPreemption() function (bug #728).
+- FIX: Fixed deadly typo in #706 fix for GCC users of 2.6.x (bug #720).
+- FIX: Fixed state check in lwIP when SYS_LIGHTWEIGHT_PROT is disabled
+       (bug #713).
+- FIX: Fixed race condition in RT registry (bug #712). 
+- FIX: Fixed shift of signed constant causes warnings with IAR compiler
+       (bug #709).
+- FIX: Fixed ARM errata 752419 (bug #706).
+- FIX: Fixed ARM errata 752419 (bug #706).
+- FIX: Fixed missing time conversion in lwIP arch module (bug #696).
+- FIX: Fixed STM32 CAN driver always broadcasts tx complete for mailbox 1
+       (bug #690).
+- FIX: Fixed wrong DMA priority assigned to STM32F3 ADC3&4 (bug #680).
+- FIX: Fixed usbStop() hangs in STM32 OTGv1 driver (bug #674).
+- FIX: Fixed I2S clock selection not working in STM32F4xx HAL (bug #667).
+- FIX: Fixed STM32 USBv1 wrong multiplier when calculating descriptor address
+       in BTABLE (bug #661).
+- FIX: Fixed STM32 USBv1 does not make use of BTABLE_ADDR define (bug #660).
+- FIX: Fixed invalid class type for sdPutWouldBlock() and sdGetWouldBlock()
+       functions (bug #659).
+- FIX: Fixed STM32L1xx HAL errors in comments (bug #657).
+- FIX: Fixed STM32 USBv1 wrong buffer alignment (bug #656).
+- FIX: Fixed Wrong vector name for STM32F3xx EXTI33 (bug #655).
+- FIX: Fixed missing RCC and ISR definitions for STM32F0xx timers (bug #651).
+- FIX: Fixed STM32F3xx HAL checking for non-existing macros (bug #648).
+- FIX: Fixed problem with chVTIsTimeWithinX() (bug #646).
+- FIX: Fixed _sbrk_r with incr == 0 should be valid (bug #645).
+- FIX: Fixed incorrect working area size in LwIP creation in demos (bug #642).
+- FIX: Fixed error in hal_lld_f100.h checks (bug #641).
+- FIX: Fixed volatile variable issue in I/O queues, both RT and HAL (bug #640).
+- FIX: Fixed STM32 RTC init direct register access (bug #639).
+- FIX: Fixed STM32 RTC driver does not set h12 (bug #638).
+- FIX: Fixed problem with RT mutexes involving priority inheritance (bug #632).
+- FIX: Several minor documentation/formatting-related fixes.
+
+*** 2.6.9 ***
+- NEW: Added files for Core407V board.
+- FIX: Removed call to localtime_r() for non-GNU compilers in chrtclib.c.
+- FIX: Fixed duplicated doxygen tag in STM32F4xx hal_lld.h file (bug #621).
+- FIX: Fixed wrong check in canReceive() (bug #619).
+- FIX: Fixed wrong EXTI[18] vector number on STM32F373 (bug #618).
+- FIX: Fixed wrong check on STM32_LSE_ENABLED definition in STM32L1xx HAL port
+       (bug #617).
+- FIX: SPE-related issue in e200z ports (bug #607).
+- FIX: Fixed wrong macro names in STM32F0xx HAL driver (bug #605).
+- FIX: Fixed wrong macro names in STM32F3xx HAL driver (bug #603).
+- FIX: Fixed STM32 RTCv2 driver missing RTC_SUPPORTS_CALLBACKS macro
+  (bug #602).
+- FIX: Fixed errors in STM32 OTGv1 driver (bug #601).
+- FIX: Fixed issue in DMA drivers when channels share ISRs (bug #597).
+- FIX: Fixed STM32 USARTv1: incorrect txend2_cb callback behaviour (bug #596).
+
+*** 2.6.8 ***
+- FIX: Fixed spurious TC interrupt in STM32 UART (v1 and v2) driver (bug #584).
+- FIX: Fixed invalid checks on STM32L1xx LSI and LSE clocks (bug #583).
+- FIX: Fixed RCC CAN2 macros missing in STM32F1xx platform (bug #582).
+- FIX: Fixed misplaced __set_BASEPRI() in STM32 OTGv1 driver (bug #566).
+- FIX: Fixed typo in code doc of chOQWriteTimeout function (bug #565).
+- FIX: Fixed wrong condition check in MMC_SPI driver (bug #564).
+- FIX: Fixed wrong boolean operators in mutexes module (bug #563).
+- FIX: Fixed missing macro in STM32 USBv1 and OTGv1 drivers (bug #562).
+- FIX: Fixed wrong paths for OLIMEX_STM32-E407_REV_D board (bug #561).
+- FIX: Fixed wrong TIM1/8_CLK on STM32F30x when using PCLK2 with prescaler
+  (bug #557).
+- FIX: Fixed STM32 USARTv1: serial interrupt hang on overrun (and other) error
+  (bug #558).
+
 *** 2.6.7 ***
+- FIX: Fixed random R0 register corruption in Keil ARMCMx port when FPU
+  is enabled (bug #556).
+- FIX: Fixed wrong CORTEX_PRIORITY_PENDSV value in ARMCMx ports (bug #555).
+- FIX: Safer ADC start for STM32F4 and STM32L1.
+- FIX: AT91SAM7 SPI1 undocumented errata on manual CS manipulation.
+- FIX: AT91SAM7 SPI set CS pin mode.
+- FIX: Fixed AT91SAM7 gpio modes.
+- FIX: AT91SAM7 i2c and spi driver using wrong pins for many cpu variants
+- FIX: Fixed STM32 USB driver randomly unable to transition to VALID state
+  (bug #554).
+- FIX: Fixed OLIMEX STM32-E407 board.h errors (FAULT input swap and wrong
+  BUSON initial output state) (bug #551).
+- FIX: Fixed STM32F3xx clock init fails if PLL is enabled at startup
+  (bug #550).
+- FIX: Fixed problem in GCC scatter files (bug #548).
+- FIX: Fixed kernel function chEvtWaitOne() malfunctioning (bug #547).
+- FIX: Fixed minor warnings while building with IAR 7.3.0 (bug #542).
+- FIX: Fixed STM32 OTGv1 usb_lld_pump improper stack filling (bug #541).
 - FIX: Fixed chsnprintf sometimes doesn't terminate str (bug #538).
 - FIX: Fixed wrong wait states for STM32F401 (bug #537).
+- FIX: Fixed failure to compile EXT driver on STM32F401, re-opened
+  ticket (bug #517).
 
 *** 2.6.6 ***
 - FIX: Fixed error in STM32F30x adc_lld_stop() (bug #535).
@@ -812,7 +913,7 @@
 
 *** 2.0.5 ***
 - FIX: Incorrect AT91SAM7X initialization, thanks Leszek (bug 3075354).
-- FIX: Fixed race condition in function chSchGoSleepTimeoutS, thanks Bal�zs
+- FIX: Fixed race condition in function chSchGoSleepTimeoutS, thanks Balzs
   (bug 3074984).
 - FIX: Fixed race condition in threads creation (bug 3069854).
 - FIX: Fixed broken CH_DBG_ENABLE_STACK_CHECK option in legacy CM3 port (bug

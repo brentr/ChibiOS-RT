@@ -65,7 +65,7 @@
 ADCDriver ADCD1;
 #endif
 
-/** @brief ADC1 driver identifier.*/
+/** @brief ADC3 driver identifier.*/
 #if STM32_ADC_USE_ADC3 || defined(__DOXYGEN__)
 ADCDriver ADCD3;
 #endif
@@ -350,7 +350,7 @@ void adc_lld_init(void) {
 #endif
   ADCD3.dmastp  = STM32_DMA2_STREAM5;
   ADCD3.dmamode = ADC_DMA_SIZE |
-                  STM32_DMA_CR_PL(STM32_ADC_ADC12_DMA_PRIORITY) |
+                  STM32_DMA_CR_PL(STM32_ADC_ADC34_DMA_PRIORITY) |
                   STM32_DMA_CR_DIR_P2M |
                   STM32_DMA_CR_MINC        | STM32_DMA_CR_TCIE        |
                   STM32_DMA_CR_DMEIE       | STM32_DMA_CR_TEIE;
@@ -396,7 +396,7 @@ void adc_lld_start(ADCDriver *adcp) {
       chDbgAssert(!b, "adc_lld_start(), #2", "stream already allocated");
       rccEnableADC34(FALSE);
     }
-#endif /* STM32_ADC_USE_ADC2 */
+#endif /* STM32_ADC_USE_ADC3 */
 
     /* Setting DMA peripheral-side pointer.*/
 #if STM32_ADC_DUAL_MODE
@@ -491,8 +491,8 @@ void adc_lld_start_conversion(ADCDriver *adcp) {
   dmaStreamSetTransactionSize(adcp->dmastp, ((uint32_t)grpp->num_channels/2) *
                                             (uint32_t)adcp->depth);
 #else
-    dmaStreamSetTransactionSize(adcp->dmastp, (uint32_t)grpp->num_channels *
-                                              (uint32_t)adcp->depth);
+  dmaStreamSetTransactionSize(adcp->dmastp, (uint32_t)grpp->num_channels *
+                                            (uint32_t)adcp->depth);
 #endif
   dmaStreamSetMode(adcp->dmastp, dmamode);
   dmaStreamEnable(adcp->dmastp);
