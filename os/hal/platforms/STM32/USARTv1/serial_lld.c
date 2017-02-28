@@ -172,14 +172,31 @@ static void serve_interrupt(SerialDriver *sdp) {
     /* Error condition detection.*/
     if (sr & (USART_SR_ORE | USART_SR_NE | USART_SR_FE  | USART_SR_PE))
       set_error(sdp, sr);
-    if (sr & USART_SR_RXNE)
+    if (sr & USART_SR_RXNE) {
       sdp->inputHandler(sdp, b);
+      if (chIQIsFullI(&sdp->iqueue)) //allow USARTs RTS flow control to activate
+        u->CR1 = (cr1 &= ~USART_CR1_RXNEIE);
+    }
     chSysUnlockFromIsr();
     sr = u->SR;
   }
 
-  /* Physical transmission end.*/
-  if (sr & USART_SR_TC) {
+  /* Transmission buffer empty.*/
+  if (cr1 & USART_CR1_TXEIE) {
+    if (sr & USART_SR_TXE) {
+      msg_t b;
+      chSysLockFromIsr();
+      b = chOQGetI(&sdp->oqueue);
+      if (b < Q_OK) {
+        chnAddFlagsI(sdp, CHN_OUTPUT_EMPTY);
+        u->CR1 = cr1 ^ (USART_CR1_TXEIE | USART_CR1_TCIE);
+      }
+      else
+        u->DR = b;
+      chSysUnlockFromIsr();
+    }
+     /* Physical transmission end.*/
+  }else if (sr & USART_SR_TC) {
     chSysLockFromIsr();
     if (chOQIsEmptyI(&sdp->oqueue))
       chnAddFlagsI(sdp, CHN_TRANSMISSION_END);
@@ -188,24 +205,16 @@ static void serve_interrupt(SerialDriver *sdp) {
     chSysUnlockFromIsr();
   }
 
-  /* Transmission buffer empty.*/
-  if ((cr1 & USART_CR1_TXEIE) && (sr & USART_SR_TXE)) {
-    msg_t b;
-    chSysLockFromIsr();
-    b = chOQGetI(&sdp->oqueue);
-    if (b < Q_OK) {
-      chnAddFlagsI(sdp, CHN_OUTPUT_EMPTY);
-      u->CR1 = (cr1 & ~USART_CR1_TXEIE) | USART_CR1_TCIE;
-    }
-    else
-      u->DR = b;
-    chSysUnlockFromIsr();
-  }
 
 }
 
 #if STM32_SERIAL_USE_USART1 || defined(__DOXYGEN__)
-static void notify1(OutputQueue *qp) {
+static void inotify1(InputQueue *qp) {
+
+  (void)qp;
+  USART1->CR1 |= USART_CR1_RXNEIE;
+}
+static void onotify1(OutputQueue *qp) {
 
   (void)qp;
   USART1->CR1 |= USART_CR1_TXEIE;
@@ -213,7 +222,12 @@ static void notify1(OutputQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_USART2 || defined(__DOXYGEN__)
-static void notify2(OutputQueue *qp) {
+static void inotify2(InputQueue *qp) {
+
+  (void)qp;
+  USART2->CR1 |= USART_CR1_RXNEIE;
+}
+static void onotify2(OutputQueue *qp) {
 
   (void)qp;
   USART2->CR1 |= USART_CR1_TXEIE;
@@ -221,7 +235,12 @@ static void notify2(OutputQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_USART3 || defined(__DOXYGEN__)
-static void notify3(OutputQueue *qp) {
+static void inotify3(InputQueue *qp) {
+
+  (void)qp;
+  USART3->CR1 |= USART_CR1_RXNEIE;
+}
+static void onotify3(OutputQueue *qp) {
 
   (void)qp;
   USART3->CR1 |= USART_CR1_TXEIE;
@@ -229,7 +248,12 @@ static void notify3(OutputQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_UART4 || defined(__DOXYGEN__)
-static void notify4(OutputQueue *qp) {
+static void inotify4(InputQueue *qp) {
+
+  (void)qp;
+  USART4->CR1 |= USART_CR1_RXNEIE;
+}
+static void onotify4(OutputQueue *qp) {
 
   (void)qp;
   UART4->CR1 |= USART_CR1_TXEIE;
@@ -237,7 +261,12 @@ static void notify4(OutputQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_UART5 || defined(__DOXYGEN__)
-static void notify5(OutputQueue *qp) {
+static void inotify5(InputQueue *qp) {
+
+  (void)qp;
+  USART5->CR1 |= USART_CR1_RXNEIE;
+}
+static void onotify5(OutputQueue *qp) {
 
   (void)qp;
   UART5->CR1 |= USART_CR1_TXEIE;
@@ -245,7 +274,12 @@ static void notify5(OutputQueue *qp) {
 #endif
 
 #if STM32_SERIAL_USE_USART6 || defined(__DOXYGEN__)
-static void notify6(OutputQueue *qp) {
+static void inotify6(InputQueue *qp) {
+
+  (void)qp;
+  USART6->CR1 |= USART_CR1_RXNEIE;
+}
+static void onotify6(OutputQueue *qp) {
 
   (void)qp;
   USART6->CR1 |= USART_CR1_TXEIE;
@@ -382,32 +416,32 @@ CH_IRQ_HANDLER(STM32_USART6_HANDLER) {
 void sd_lld_init(void) {
 
 #if STM32_SERIAL_USE_USART1
-  sdObjectInit(&SD1, NULL, notify1);
+  sdObjectInit(&SD1, inotify1, onotify1);
   SD1.usart = USART1;
 #endif
 
 #if STM32_SERIAL_USE_USART2
-  sdObjectInit(&SD2, NULL, notify2);
+  sdObjectInit(&SD2, inotify2, onotify2);
   SD2.usart = USART2;
 #endif
 
 #if STM32_SERIAL_USE_USART3
-  sdObjectInit(&SD3, NULL, notify3);
+  sdObjectInit(&SD3, inotify3, onotify3);
   SD3.usart = USART3;
 #endif
 
 #if STM32_SERIAL_USE_UART4
-  sdObjectInit(&SD4, NULL, notify4);
+  sdObjectInit(&SD4, inotify4, onotify4);
   SD4.usart = UART4;
 #endif
 
 #if STM32_SERIAL_USE_UART5
-  sdObjectInit(&SD5, NULL, notify5);
+  sdObjectInit(&SD5, inotify5, onotify5);
   SD5.usart = UART5;
 #endif
 
 #if STM32_SERIAL_USE_USART6
-  sdObjectInit(&SD6, NULL, notify6);
+  sdObjectInit(&SD6, inotify6, onotify6);
   SD6.usart = USART6;
 #endif
 }
