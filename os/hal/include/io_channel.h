@@ -289,9 +289,8 @@ typedef struct {
  *
  * @iclass
  */
-#define chnAddFlagsI(ip, flags) {                                           \
-  chEvtBroadcastFlagsI(&(ip)->event, flags);                                \
-}
+#define chnAddFlagsI(ip, flags) (chEvtBroadcastFlagsI(&(ip)->event, flags))                               \
+
 /** @} */
 
 #endif /* CH_USE_EVENTS */
