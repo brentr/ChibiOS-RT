@@ -133,8 +133,6 @@ void halInit(void) {
  * @details This function verifies if the current realtime counter value
  *          lies within the specified range or not. The test takes care
  *          of the realtime counter wrapping to zero on overflow.
- * @note    When start==end then the function returns always true because the
- *          whole time range is specified.
  * @note    This is an optional service that could not be implemented in
  *          all HAL implementations.
  * @note    This function can be called from any context.
@@ -171,12 +169,18 @@ void halInit(void) {
  *
  * @special
  */
-bool_t halIsCounterWithin(halrtcnt_t start, halrtcnt_t end) {
-  halrtcnt_t now = halGetCounterValue();
+#define halIsCounterWithin(start, end)                                          \
+  (halTicksSince(start) < ((halrtcnt_t)(end) - (halrtcnt_t)(start)))
 
-  return end > start ? (now >= start) && (now < end) :
-                       (now >= start) || (now < end);
-}
+/**
+ * @brief   Returns the elapsed (hal) time since the specified start.
+ *
+ * @param[in] start     start counter
+ * @return              (unsigned) hal time since start
+ *
+ * @api
+ */
+#define halTicksSince(start) (halGetCounterValue() - (halrtcnt_t)(start))
 
 /**
  * @brief   Polled delay.
@@ -192,8 +196,7 @@ bool_t halIsCounterWithin(halrtcnt_t start, halrtcnt_t end) {
  */
 void halPolledDelay(halrtcnt_t ticks) {
   halrtcnt_t start = halGetCounterValue();
-  halrtcnt_t timeout  = start + (ticks);
-  while (halIsCounterWithin(start, timeout))
+  while (halTicksSince(start) < ticks)
     ;
 }
 #endif /* HAL_IMPLEMENTS_COUNTERS */
