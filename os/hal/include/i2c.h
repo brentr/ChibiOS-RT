@@ -71,7 +71,7 @@
  */
 #define I2C_OK        (RDY_OK)
 #define I2C_TIMEOUT   (RDY_TIMEOUT)
-#define I2C_ERROR     (RDY_RESET)
+#define I2C_ERROR     (RDY_RESET-1)
 /** @} */
 
 
