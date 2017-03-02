@@ -355,15 +355,28 @@ static INLINE void endSlaveReplyDMA(I2CDriver *i2cp, size_t bytesRemaining)
  *
  * @notapi
  */
-static INLINE void wakeup_isr(I2CDriver *i2cp, msg_t msg)
+static INLINE void wakeupS(I2CDriver *i2cp, msg_t msg)
 {
-  chSysLockFromIsr();
   Thread *tp = i2cp->thread;
   if (tp != NULL) {
     i2cp->thread = NULL;
-    tp->p_u.rdymsg = msg;
-    chSchReadyI(tp);
+    chSchReadyI(tp)->p_u.rdymsg = msg;
   }
+}
+
+
+/**
+ * @brief   Wakes up a waiting thread from ISR.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] msg       wakeup message
+ *
+ * @notapi
+ */
+static INLINE void wakeup_isr(I2CDriver *i2cp, msg_t msg)
+{
+  chSysLockFromIsr();
+  wakeupS(i2cp, msg);
   chSysUnlockFromIsr();
 }
 
@@ -488,15 +501,13 @@ static void i2c_lld_set_opmode(I2CDriver *i2cp) {
 
 
 /**
- * @brief   Handling of stalled master mode I2C transactions.
+ * @brief   force immediate return to idle mode
  *
  * @param[in] i2cp      pointer to the @p I2CDriver object
  *
  * @notapi
  */
-static void i2c_lld_safety_timeout(void *p) {
-  I2CDriver *i2cp = p;
-
+static void forceAbort(I2CDriver *i2cp) {
   stopTimer(i2cp);
 #if HAL_USE_I2C_SLAVE             /* abort any slave operation in progress */
   if (!(i2cp->i2c->SR2 & I2C_SR2_MSL))
@@ -507,7 +518,35 @@ static void i2c_lld_safety_timeout(void *p) {
     i2cAbortOperation(i2cp);
     i2cp->mode = i2cIdle;
   }
+}
+
+
+/**
+ * @brief   Handling of stalled master mode I2C transactions.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static void i2c_lld_safety_timeout(void *p) {
+  I2CDriver *i2cp = p;
+  forceAbort(i2cp);
   wakeup_isr(i2cp, I2C_TIMEOUT);
+}
+
+
+/**
+ * @brief   Abort current I2C transaction.
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ * @param[in] reason    thread result code (should be < 0)
+ *
+ */
+void i2c_lld_abort(I2CDriver *i2cp, msg_t reason) {
+  forceAbort(i2cp);
+  chSysLock();
+  wakeupS(i2cp, reason);
+  chSysUnlock();
 }
 
 
