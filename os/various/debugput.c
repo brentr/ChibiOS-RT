@@ -56,7 +56,7 @@ static uint8_t fetcher(void *outQ)
   msg_t b;
   chSysLock();
   while((b = chOQGetI(q)) == Q_EMPTY)
-    chSchGoSleepS(THD_STATE_SLEEPING);
+    chSchGoSleepS(THD_STATE_SUSPENDED);
   chSysUnlock();
   return b;
 }
