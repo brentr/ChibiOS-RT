@@ -173,6 +173,9 @@ typedef struct {
  */
 #define chVTIsArmedI(vtp) ((vtp)->vt_func != NULL)
 
+#define chVTIsArmed(vtp) chVTIsArmedI(vtp)
+
+
 /**
  * @brief   Enables a virtual timer.
  * @note    The associated function is invoked from interrupt context.
