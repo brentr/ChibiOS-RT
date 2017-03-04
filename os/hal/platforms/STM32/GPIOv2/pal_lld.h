@@ -331,7 +331,9 @@ typedef GPIO_TypeDef * ioportid_t;
  *
  * @notapi
  */
+#ifndef pal_lld_init  //allow halconf.h to override this
 #define pal_lld_init(config) _pal_lld_init(config)
+#endif
 
 /**
  * @brief   Reads an I/O port.
@@ -360,6 +362,20 @@ typedef GPIO_TypeDef * ioportid_t;
  * @notapi
  */
 #define pal_lld_readlatch(port) ((port)->ODR)
+
+/**
+ * @brief   Reads the port's mode mask
+ * @details This function is implemented by reading the GPIO MODER register, the
+ *          implementation has no side effects.
+ * @note    This function is not meant to be invoked directly by the application
+ *          code.
+ *
+ * @param[in] port      port identifier
+ * @return              The I/O mode bits.
+ *
+ * @notapi
+ */
+#define pal_lld_readmode(port) ((port)->MODER)
 
 /**
  * @brief   Writes on a I/O port.
@@ -446,6 +462,7 @@ extern const PALConfig pal_default_config;
 #ifdef __cplusplus
 extern "C" {
 #endif
+  void pal_lld_init(const PALConfig *config); //this may be redefined extern
   void _pal_lld_init(const PALConfig *config);
   void _pal_lld_setgroupmode(ioportid_t port,
                              ioportmask_t mask,
