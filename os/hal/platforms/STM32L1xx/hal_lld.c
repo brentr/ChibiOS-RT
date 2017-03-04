@@ -86,6 +86,8 @@ static void hal_lld_backup_domain_init(void) {
 /* Driver exported functions.                                                */
 /*===========================================================================*/
 
+uint32_t hal_lld_ABHSTR = ~RCC_AHBRSTR_FLITFRST;
+
 /**
  * @brief   Low level HAL driver initialization.
  *
@@ -94,7 +96,7 @@ static void hal_lld_backup_domain_init(void) {
 void hal_lld_init(void) {
 
   /* Reset of all peripherals.*/
-  rccResetAHB(~RCC_AHBRSTR_FLITFRST);
+  rccResetAHB(hal_lld_ABHSTR);
   rccResetAPB1(~RCC_APB1RSTR_PWRRST);
   rccResetAPB2(~0);
 

@@ -936,6 +936,7 @@ extern "C" {
 #endif
   void hal_lld_init(void);
   void stm32_clock_init(void);
+  extern uint32_t hal_lld_ABHSTR;  //clear bits in mask to disable reset of GPIOs
 #ifdef __cplusplus
 }
 #endif

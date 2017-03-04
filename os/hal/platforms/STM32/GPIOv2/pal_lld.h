@@ -378,6 +378,21 @@ typedef GPIO_TypeDef * ioportid_t;
 #define pal_lld_readmode(port) ((port)->MODER)
 
 /**
+ * @brief   Reads the pad's mode
+ * @details This function is implemented by reading the GPIO MODER register, the
+ *          implementation has no side effects.
+ * @note    This function is not meant to be invoked directly by the application
+ *          code.
+ *
+ * @param[in] port      port identifier
+ * @param[in] bit       pad number
+ * @return              The I/O mode.
+ *
+ * @notapi
+ */
+#define pal_lld_readpadmode(port, bit) ((((port)->MODER)>>(2*bit))&PAL_STM32_MODE_MASK)
+
+/**
  * @brief   Writes on a I/O port.
  * @details This function is implemented by writing the GPIO ODR register, the
  *          implementation has no side effects.

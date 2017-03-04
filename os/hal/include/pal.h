@@ -422,6 +422,19 @@ typedef struct {
 #endif
 
 /**
+ * @brief   Reads the mode of the indicated pad
+ * @note    The function can be called from any context.
+ *
+ * @param[in] port      port identifier
+ * @param[in] pad       pad number within the port
+ * @return              The pad's current I/O mode
+ * @retval I/O mode is an enumeration defined in the low-level driver
+ *
+ * @special
+ */
+#define palReadPadMode(port, pad) pal_lld_readpadmode(port, pad)
+
+/**
  * @brief   Writes a logical state on an output pad.
  * @note    The operation is not guaranteed to be atomic on all the
  *          architectures, for atomicity and/or portability reasons you may
