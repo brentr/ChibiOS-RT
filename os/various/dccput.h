@@ -33,8 +33,9 @@ void DCCputByte(const uint8_t *val, size_t len);
 void DCCputs(const char *msg);
 void DCCputc(const int msg);
 
-#define DCCmaxBusy    S2ST(5)     //max # of tics to busy wait
+#define DCCmaxBusy    S2ST(2)     //max # of tics to busy wait
 #define DCCbusyDelay  MS2ST(200)  //tics to wait between retries after maxBusy
+#define DCCpanicSpin  200000      //tune to delay approx 100ms with interrupts disabled
 
 /*
   like DCCputs, but uses the DDCfetcher function to retrieve each

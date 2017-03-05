@@ -162,14 +162,12 @@ extern ch_trace_buffer_t dbg_trace_buffer;
 #if !defined(chDbgCheck)
 #define chDbgCheck(c, func) {                                               \
   if (!(c))                                                                 \
-    chDbgPanic(__QUOTE_THIS(func)"()");                                     \
+    chDbgPanic(func "()");                                     \
 }
 #endif /* !defined(chDbgCheck) */
 /** @} */
 #else /* !CH_DBG_ENABLE_CHECKS */
-#define chDbgCheck(c, func) {                                               \
-  (void)(c), (void)__QUOTE_THIS(func)"()";                                  \
-}
+#define chDbgCheck(c, func)
 #endif /* !CH_DBG_ENABLE_CHECKS */
 
 /*===========================================================================*/

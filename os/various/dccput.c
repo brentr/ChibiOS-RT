@@ -42,15 +42,20 @@
 
 #define	BUSY	1
 
-
-static void awaitReady(void)
+static void DCCawaitReady(void)
 /*
   poll for data ready
   after DCCmaxBusy ticks, poll only once every DCCbusyDelay tics
+  Note:  May be called with interrupts disabled for Panic output.
+         In this case, chTimeNow() will be frozen.
+         To prevent hanging while time is frozen, return after DDCpanicSpin loops.
 */
 {
   if (DCRDR & BUSY) {
+    uint32_t count = DCCpanicSpin;
     systime_t wtStart = chTimeNow();
+    while (wtStart == chTimeNow())
+      if (!(DCRDR & BUSY) || !--count) return;
     while (DCRDR & BUSY)
       if (chTimeNow()-wtStart >= DCCmaxBusy) { //busy wait for first few seconds
         do  //but, if the host is not responding...
@@ -63,19 +68,19 @@ static void awaitReady(void)
 
 static void DCCwrite(uint32_t dcc_data)
 {
-  awaitReady();
+  DCCawaitReady();
   /* write our data and set write flag - tell host there is data*/
   DCRDR = (uint16_t)(((dcc_data & 0xff) << 8) | BUSY);
 
-  awaitReady();
+  DCCawaitReady();
   /* write our data and set write flag - tell host there is data*/
   DCRDR = (uint16_t)((dcc_data & 0xff00) | BUSY);
 
-  awaitReady();
+  DCCawaitReady();
   /* write our data and set write flag - tell host there is data*/
   DCRDR = (uint16_t)(((dcc_data & 0xff0000) >> 8) | BUSY);
 
-  awaitReady();
+  DCCawaitReady();
   /* write our data and set write flag - tell host there is data*/
   DCRDR = (uint16_t)(((dcc_data & 0xff000000) >> 16) | BUSY);
 }
