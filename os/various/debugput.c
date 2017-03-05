@@ -41,7 +41,7 @@ static void resumeReader(OutputQueue *ignored)
 */
 {
   (void) ignored;
-  if(debugReader->p_state == THD_STATE_SLEEPING)
+  if(debugReader->p_state == THD_STATE_SUSPENDED)
     chSchWakeupS(debugReader, 0);
 }
 
@@ -56,7 +56,7 @@ static uint8_t fetcher(void *outQ)
   msg_t b;
   chSysLock();
   while((b = chOQGetI(q)) == Q_EMPTY)
-    chSchGoSleepS(THD_STATE_SLEEPING);
+    chSchGoSleepS(THD_STATE_SUSPENDED);
   chSysUnlock();
   return b;
 }
