@@ -3,7 +3,7 @@
  *   Dominic.Rath@gmx.de                                                   *
  *   Copyright (C) 2008 by Spencer Oliver                                  *
  *   spen@spen-soft.co.uk                                                  *
- *   revised by:  brent@mbari.org  10/27/13                                *
+ *   revised by:  brent@mbari.org  3/5/17                                  *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -34,8 +34,7 @@ void DCCputs(const char *msg);
 void DCCputc(const int msg);
 
 #define DCCmaxBusy    S2ST(2)     //max # of tics to busy wait
-#define DCCbusyDelay  MS2ST(200)  //tics to wait between retries after maxBusy
-#define DCCpanicSpin  200000      //tune to delay approx 100ms with interrupts disabled
+#define DCCbusyDelay  MS2ST(250)  //tics to wait between retries after maxBusy
 
 /*
   like DCCputs, but uses the DDCfetcher function to retrieve each

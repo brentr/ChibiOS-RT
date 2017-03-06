@@ -5,7 +5,7 @@
  *   spen@spen-soft.co.uk                                                  *
  *   Copyright (C) 2008 by Frederik Kriewtz                                *
  *   frederik@kriewitz.eu                                                  *
- *   revised by:  brent@mbari.org  10/27/13                                *
+ *   revised by:  brent@mbari.org  3/5/17                                  *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -39,7 +39,6 @@
  * DCRDR[31:24] is used for by host for write buffer */
 
 #define DCRDR		(*((volatile uint16_t *)0xE000EDF8))
-
 #define	BUSY	1
 
 static void DCCawaitReady(void)
@@ -48,14 +47,19 @@ static void DCCawaitReady(void)
   after DCCmaxBusy ticks, poll only once every DCCbusyDelay tics
   Note:  May be called with interrupts disabled for Panic output.
          In this case, chTimeNow() will be frozen.
-         To prevent hanging while time is frozen, return after DDCpanicSpin loops.
 */
 {
   if (DCRDR & BUSY) {
-    uint32_t count = DCCpanicSpin;
+    static uint32_t panicSpin = (uint32_t)(-1) / CH_FREQUENCY;
+      //max. # of iterations for panic output
+      //This hack is used only for panics (when interrupts are disabled)
+    uint32_t count = panicSpin;
     systime_t wtStart = chTimeNow();
-    while (wtStart == chTimeNow())
-      if (!(DCRDR & BUSY) || !--count) return;
+    while (DCRDR & BUSY && wtStart == chTimeNow())
+      if (!--count) {   //don't hang for panic messages if there's no debugger
+        panicSpin = 1;  //don't bother waiting again (we'll reset soon)
+        return;
+      }
     while (DCRDR & BUSY)
       if (chTimeNow()-wtStart >= DCCmaxBusy) { //busy wait for first few seconds
         do  //but, if the host is not responding...
