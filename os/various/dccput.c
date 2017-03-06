@@ -60,13 +60,12 @@ static void DCCawaitReady(void)
         panicSpin = 1;  //don't bother waiting again (we'll reset soon)
         return;
       }
-    while (DCRDR & BUSY)
-      if (chTimeNow()-wtStart >= DCCmaxBusy) { //busy wait for first few seconds
-        do  //but, if the host is not responding...
-          chThdSleep(DCCbusyDelay);  //sleep between each poll of the BUSY bit
-        while (DCRDR & BUSY);
-        break;
-      }
+    while (chTimeNow()-wtStart <= DCCmaxBusy)
+      if (!(DCRDR & BUSY))
+        return;
+    do  //but, if the host is not responding...
+      chThdSleep(DCCbusyDelay);  //sleep between each poll of the BUSY bit
+    while (DCRDR & BUSY);
   }
 }
 
