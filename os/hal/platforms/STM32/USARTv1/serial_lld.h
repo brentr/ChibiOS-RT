@@ -289,6 +289,8 @@ extern "C" {
   void sd_lld_init(void);
   void sd_lld_start(SerialDriver *sdp, const SerialConfig *config);
   void sd_lld_stop(SerialDriver *sdp);
+  void sd_lld_xmitByteI(SerialDriver *sdp, uint8_t b);
+
 #ifdef __cplusplus
 }
 #endif

@@ -205,6 +205,19 @@ static void serve_interrupt(SerialDriver *sdp) {
 
 }
 
+
+/**
+ * @brief   Output byte in polling mode
+ *
+ * @param[in] sdp       communication channel associated to the USART
+ */
+void sd_lld_xmitByteI(SerialDriver *sdp, uint8_t b) {
+  USART_TypeDef *u = sdp->usart;
+  while (!(u->SR & USART_SR_TXE)) ;
+  u->DR = b;
+}
+
+
 #if STM32_SERIAL_USE_USART1 || defined(__DOXYGEN__)
 static void onotify1(OutputQueue *qp) {
 
