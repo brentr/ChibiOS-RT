@@ -105,9 +105,8 @@ static void usart_init(SerialDriver *sdp, const SerialConfig *config) {
   /* Note that some bits are enforced.*/
   u->CR2 = config->cr2 ^ USART_CR2_LBDIE;
   u->CR3 = config->cr3 ^ USART_CR3_EIE;
-  u->CR1 = config->cr1 ^ (USART_CR1_UE | USART_CR1_PEIE |
-                         USART_CR1_RXNEIE | USART_CR1_TE |
-                         USART_CR1_RE);
+  u->CR1 = config->cr1 ^ (USART_CR1_UE | USART_CR1_RE | USART_CR1_TE |
+                          USART_CR1_PEIE | USART_CR1_RXNEIE);
   u->SR = 0;
   (void)u->SR;  /* SR reset step 1.*/
   (void)u->DR;  /* SR reset step 2.*/
@@ -207,11 +206,25 @@ static void serve_interrupt(SerialDriver *sdp) {
 
 
 /**
+ * @brief   Switch to polling mode (disable interrupts)
+ *
+ * @param[in] sdp       communication channel associated to the USART
+ */
+void sd_lld_pollMode(SerialDriver *sdp) {
+  USART_TypeDef *u = sdp->usart;
+  u->CR1 &= 
+    ~(USART_CR1_TXEIE | USART_CR1_TCIE | USART_CR1_RXNEIE | USART_CR1_PEIE);
+  u->CR2 &= ~USART_CR2_LBDIE;
+  u->CR3 &= ~USART_CR3_EIE;
+}
+
+
+/**
  * @brief   Output byte in polling mode
  *
  * @param[in] sdp       communication channel associated to the USART
  */
-void sd_lld_xmitByteI(SerialDriver *sdp, uint8_t b) {
+void sd_lld_xmitByte(SerialDriver *sdp, uint8_t b) {
   USART_TypeDef *u = sdp->usart;
   while (!(u->SR & USART_SR_TXE)) ;
   u->DR = b;
