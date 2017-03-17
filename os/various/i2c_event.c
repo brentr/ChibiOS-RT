@@ -16,7 +16,7 @@
    for the servicing thread, along with all their associated meta-data.
 
    We assume that the low-level driver will be able to stretch
-   the I2C clock when data is being transferred to or fram the slave device.
+   the I2C clock when data is being transferred to or from the slave device.
    Therefore, there is no need to queue message data.
 
    However...
@@ -101,7 +101,7 @@ static void queueCurrentEvent(I2CDriver *i2cp, i2cEventType type)
   Thread *tp = body->thread;
   if (tp != NULL) {
     body->thread = NULL;
-    chSchReadyI(tp);
+    chSchReadyI(tp)->p_u.rdymsg = I2C_OK;
   }
   chSysUnlockFromIsr();
 }
