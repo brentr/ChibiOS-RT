@@ -262,12 +262,13 @@ static INLINE i2caddr_t matchedAdr(I2C_TypeDef *dp, uint32_t sr2) {
  * @notapi
  */
 static INLINE void reportSlaveError(I2CDriver *i2cp) {
+  enum i2cMode mode = i2cp->mode;
 #if HAL_USE_I2C_STARTFIX
   i2cp->config->disarmStartDetect();
 #endif
-  {
-    const I2CSlaveMsg *xfer = i2cp->mode >= i2cSlaveReplying ?
-                                            i2cp->slaveReply : i2cp->slaveRx;
+  if (mode > i2cIdle && mode < i2cIsMaster) {  //processing slave message
+    const I2CSlaveMsg *xfer = mode >= i2cSlaveReplying ?
+                                      i2cp->slaveReply : i2cp->slaveRx;
     xfer->exception(i2cp);  /* in this case, i2cp->slaveErrors == 0 */
   }
   i2cp->mode = i2cIdle;
