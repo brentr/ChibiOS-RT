@@ -82,10 +82,7 @@ void _idle_thread(void *p) {
  * @special
  */
 void chSysInit(void) {
-  static Thread mainthread;
-#if CH_DBG_ENABLE_STACK_CHECK
   extern stkalign_t __main_thread_stack_base__;
-#endif
 
   port_init();
   _scheduler_init();
@@ -101,12 +98,13 @@ void chSysInit(void) {
 #endif
 
   /* Now this instructions flow becomes the main thread.*/
-  setcurrp(_thread_init(&mainthread, NORMALPRIO));
+  setcurrp(_thread_init((Thread *)&__main_thread_stack_base__, NORMALPRIO));
   currp->p_state = THD_STATE_CURRENT;
 #if CH_DBG_ENABLE_STACK_CHECK
   /* This is a special case because the main thread Thread structure is not
      adjacent to its stack area.*/
-  currp->p_stklimit = &__main_thread_stack_base__;
+  currp->p_stklimit =
+    &__main_thread_stack_base__ + sizeof(Thread)/sizeof(stkalign_t) + 1;
 #endif
   chSysEnable();
 
