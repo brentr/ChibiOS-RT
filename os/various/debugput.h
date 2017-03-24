@@ -74,4 +74,9 @@ size_t vDebugPrint(const char *fmt, va_list ap);
 */
 #endif
 
+size_t debugQfree(void);
+/*
+  return # of bytes free space available in the debug output queue
+*/
+
 #endif

@@ -77,6 +77,14 @@ static msg_t debugReaderMain(void *arg)
   }
 }
 
+size_t debugQfree(void)
+/*
+  return # of bytes free space available in the debug output queue
+*/
+{
+  return chIQGetEmptyI(&debugOutQ);
+}
+
 
 Thread *debugPutInit(char *outq, size_t outqSize)
 /*
