@@ -391,7 +391,12 @@ typedef struct {
    * @note  The value of this field should normally be equal to zero.
    * @note  Only the DMA-related bits can be specified in this field.
    */
-  uint32_t                  dier;
+  uint16_t                  dier;
+  /**
+   * @brief TIM CR2 register initialization data.
+   * @note  The value of this field should normally be equal to zero.
+   */
+  uint16_t                  cr2;
 } GPTConfig;
 
 /**
