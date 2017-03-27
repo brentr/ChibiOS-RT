@@ -197,6 +197,16 @@ typedef uint16_t adcsample_t;
 typedef uint16_t adc_channels_num_t;
 
 /**
+ * @brief   ADC DMA mode type
+ */
+typedef enum {
+  ADC_DMA_LINEAR    = false,
+  ADC_DMA_CIRCULAR  = true,
+  ADC_DMA_REPEAT    = -1
+} adc_dma_mode_t;
+
+
+/**
  * @brief   Possible ADC failure causes.
  * @note    Error codes are architecture dependent and should not relied
  *          upon.
@@ -242,7 +252,7 @@ typedef struct {
   /**
    * @brief   Enables the circular buffer mode for the group.
    */
-  bool_t                    circular;
+  adc_dma_mode_t            circular;
   /**
    * @brief   Number of the analog channels belonging to the conversion group.
    */
