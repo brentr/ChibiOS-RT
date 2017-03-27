@@ -614,12 +614,13 @@ void gpt_lld_start(GPTDriver *gptp) {
               "gpt_lld_start(), #1", "invalid frequency");
 
   /* Timer configuration.*/
-  gptp->tim->CR1  = 0;                          /* Initially stopped.       */
-  gptp->tim->CR2  = STM32_TIM_CR2_CCDS;         /* DMA on UE (if any).      */
-  gptp->tim->PSC  = psc;                        /* Prescaler value.         */
-  gptp->tim->DIER = gptp->config->dier &        /* DMA-related DIER bits.   */
-                    STM32_TIM_DIER_IRQ_MASK;
-  gptp->tim->SR   = 0;                          /* Clear pending IRQs.      */
+  stm32_tim_t *tim = gptp->tim;
+  tim->CR1  = 0;                          /* Initially stopped.       */
+  tim->CR2  = STM32_TIM_CR2_CCDS;         /* DMA on UE (if any).      */
+  tim->PSC  = psc;                        /* Prescaler value.         */
+     /* enable only DMA-requests */
+  tim->DIER = gptp->config->dier & ~STM32_TIM_DIER_IRQ_MASK;
+  gptp->tim->SR   = 0;                    /* Clear pending IRQs.      */
 }
 
 /**
@@ -730,8 +731,8 @@ void gpt_lld_start_timer(GPTDriver *gptp, gptcnt_t interval) {
      SR bit 0 goes to 1. This is because the clearing of CNT has been inserted
      before the clearing of SR, to give it some time.*/
   tim->SR    = 0;                         /* Clear pending IRQs.      */
-  /* enable update event IRQ unless disabled in timer's config */
-  tim->DIER |= STM32_TIM_DIER_UIE ^ gptp->config->dier;
+  /* enable update event IRQ (unless disabled in timer's config) */
+  tim->DIER  = STM32_TIM_DIER_UIE ^ gptp->config->dier;
   tim->CR1   = STM32_TIM_CR1_URS | STM32_TIM_CR1_CEN;
   tim->CR2   = gptp->config->cr2;
 }
@@ -745,11 +746,12 @@ void gpt_lld_start_timer(GPTDriver *gptp, gptcnt_t interval) {
  */
 void gpt_lld_stop_timer(GPTDriver *gptp) {
 
-  gptp->tim->CR1   = 0;                         /* Initially stopped.       */
-  gptp->tim->SR    = 0;                         /* Clear pending IRQs.      */
+  stm32_tim_t *tim = gptp->tim;
+  tim->CR1   = 0;                         /* Initially stopped.       */
+  tim->SR    = 0;                         /* Clear pending IRQs.      */
 
-  /* All interrupts disabled.*/
-  gptp->tim->DIER &= ~STM32_TIM_DIER_IRQ_MASK;
+  /* All interrupts disabled, retain DMA-requests.*/
+  tim->DIER = gptp->config->dier & ~STM32_TIM_DIER_IRQ_MASK;
 }
 
 /**
