@@ -232,7 +232,7 @@ static inline void _adc_isr_full_code(ADCDriver *adcp)
     /* End conversion.*/
     adc_lld_stop_conversion(adcp);
     if ((adcp)->grpp->end_cb != NULL) {
-#ifndef ADC_CALLBACK_COMPLETES  //in case using standard API
+#if !ADC_CALLBACK_COMPLETES  //in case using standard API
       (adcp)->state = ADC_COMPLETE;
 #endif
       /* Invoke the callback passing the whole buffer.*/
