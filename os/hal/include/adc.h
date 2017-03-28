@@ -192,8 +192,8 @@ typedef enum {
  */
 static inline void _adc_isr_half_code(ADCDriver *adcp)
 {
-  if ((adcp)->grpp->end_cb != NULL) {
-    (adcp)->grpp->end_cb(adcp, (adcp)->samples, (adcp)->depth / 2);
+  if (adcp->grpp->end_cb != NULL) {
+    adcp->grpp->end_cb(adcp, adcp->samples, adcp->depth / 2);
   }
 }
 
@@ -213,38 +213,39 @@ static inline void _adc_isr_half_code(ADCDriver *adcp)
  */
 static inline void _adc_isr_full_code(ADCDriver *adcp)
 {
-  if ((adcp)->grpp->circular) {
+  const ADCConversionGroup *grpp = adcp->grpp;
+  if (grpp->circular) {
     /* Callback handling.*/
-    if ((adcp)->grpp->end_cb != NULL) {
-      if ((adcp)->depth > 1) {
+    if (grpp->end_cb != NULL) {
+      if (grpp->circular == true && adcp->depth > 1) {
         /* Invokes the callback passing the 2nd half of the buffer.*/
-        size_t half = (adcp)->depth / 2;
-        size_t half_index = half * (adcp)->grpp->num_channels;
-        (adcp)->grpp->end_cb(adcp, (adcp)->samples + half_index, half);
+        size_t half = adcp->depth / 2;
+        size_t half_index = half * grpp->num_channels;
+        grpp->end_cb(adcp, adcp->samples + half_index, half);
       }
       else {
         /* Invokes the callback passing the whole buffer.*/
-        (adcp)->grpp->end_cb(adcp, (adcp)->samples, (adcp)->depth);
+        grpp->end_cb(adcp, adcp->samples, adcp->depth);
       }
     }
   }
   else {
     /* End conversion.*/
     adc_lld_stop_conversion(adcp);
-    if ((adcp)->grpp->end_cb != NULL) {
+    if (grpp->end_cb != NULL) {
 #if !ADC_CALLBACK_COMPLETES  //in case using standard API
-      (adcp)->state = ADC_COMPLETE;
+      adcp->state = ADC_COMPLETE;
 #endif
       /* Invoke the callback passing the whole buffer.*/
-      (adcp)->grpp->end_cb(adcp, (adcp)->samples, (adcp)->depth);
-      if ((adcp)->state == ADC_COMPLETE) {
-        (adcp)->state = ADC_READY;
-        (adcp)->grpp = NULL;
+      grpp->end_cb(adcp, adcp->samples, adcp->depth);
+      if (adcp->state == ADC_COMPLETE) {
+        adcp->state = ADC_READY;
+        grpp = NULL;
       }
     }
     else {
-      (adcp)->state = ADC_READY;
-      (adcp)->grpp = NULL;
+      adcp->state = ADC_READY;
+      grpp = NULL;
     }
     _adc_wakeup_isr(adcp);
   }
@@ -268,13 +269,13 @@ static inline void _adc_isr_full_code(ADCDriver *adcp)
 static inline void _adc_isr_error_code(ADCDriver *adcp, adcerror_t err)
 {
   adc_lld_stop_conversion(adcp);
-  if ((adcp)->grpp->error_cb != NULL) {
-    (adcp)->state = ADC_ERROR;
-    (adcp)->grpp->error_cb(adcp, err);
-    if ((adcp)->state == ADC_ERROR)
-      (adcp)->state = ADC_READY;
+  if (adcp->grpp->error_cb != NULL) {
+    adcp->state = ADC_ERROR;
+    adcp->grpp->error_cb(adcp, err);
+    if (adcp->state == ADC_ERROR)
+      adcp->state = ADC_READY;
   }
-  (adcp)->grpp = NULL;
+  adcp->grpp = NULL;
   _adc_timeout_isr(adcp);
 }
 /** @} */

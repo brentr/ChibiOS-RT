@@ -207,8 +207,9 @@ void adc_lld_start_conversion(ADCDriver *adcp) {
   mode = adcp->dmamode;
   if (grpp->circular) {
     mode |= STM32_DMA_CR_CIRC;
-    if (grpp->circular == true && adcp->depth > 1) {
-      /* If dma mode is circular and circular buffer depth > 1,
+    if (adcp->depth > 1) {
+      if (grpp->circular == true)
+      /* If dma mode is double buffered and circular buffer depth > 1,
          then enable the half transfer interrupt to facilitate streaming */
       mode |= STM32_DMA_CR_HTIE;
     }
