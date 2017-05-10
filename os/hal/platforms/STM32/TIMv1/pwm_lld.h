@@ -150,6 +150,24 @@
 #endif
 
 /**
+ * @brief   PWMD10 driver enable switch.
+ * @details If set to @p TRUE the support for PWMD10 is included.
+ * @note    The default is @p TRUE.
+ */
+#if !defined(STM32_PWM_USE_TIM10) || defined(__DOXYGEN__)
+#define STM32_PWM_USE_TIM10                 FALSE
+#endif
+
+/**
+ * @brief   PWMD11 driver enable switch.
+ * @details If set to @p TRUE the support for PWMD11 is included.
+ * @note    The default is @p TRUE.
+ */
+#if !defined(STM32_PWM_USE_TIM11) || defined(__DOXYGEN__)
+#define STM32_PWM_USE_TIM11                 FALSE
+#endif
+
+/**
  * @brief   PWMD1 interrupt priority level setting.
  */
 #if !defined(STM32_PWM_TIM1_IRQ_PRIORITY) || defined(__DOXYGEN__)
@@ -200,6 +218,22 @@
 #endif
 /** @} */
 
+/**
+ * @brief   PWMD10 interrupt priority level setting.
+ */
+#if !defined(STM32_PWM_TIM10_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define STM32_PWM_TIM10_IRQ_PRIORITY         7
+#endif
+/** @} */
+
+/**
+ * @brief   PWMD11 interrupt priority level setting.
+ */
+#if !defined(STM32_PWM_TIM11_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define STM32_PWM_TIM11_IRQ_PRIORITY         7
+#endif
+/** @} */
+
 /*===========================================================================*/
 /* Configuration checks.                                                     */
 /*===========================================================================*/
@@ -232,10 +266,18 @@
 #error "TIM9 not present in the selected device"
 #endif
 
+#if STM32_PWM_USE_TIM10 && !STM32_HAS_TIM10
+#error "TIM10 not present in the selected device"
+#endif
+
+#if STM32_PWM_USE_TIM11 && !STM32_HAS_TIM11
+#error "TIM11 not present in the selected device"
+#endif
+
 #if !STM32_PWM_USE_TIM1 && !STM32_PWM_USE_TIM2 &&                           \
     !STM32_PWM_USE_TIM3 && !STM32_PWM_USE_TIM4 &&                           \
     !STM32_PWM_USE_TIM5 && !STM32_PWM_USE_TIM8 &&                           \
-    !STM32_PWM_USE_TIM9
+    !STM32_PWM_USE_TIM9 && !STM32_PWM_USE_TIM10 && !STM32_PWM_USE_TIM11
 #error "PWM driver activated but no TIM peripheral assigned"
 #endif
 
@@ -276,6 +318,16 @@
 #if STM32_PWM_USE_TIM9 &&                                                   \
     !CORTEX_IS_VALID_KERNEL_PRIORITY(STM32_PWM_TIM9_IRQ_PRIORITY)
 #error "Invalid IRQ priority assigned to TIM9"
+#endif
+
+#if STM32_PWM_USE_TIM10 &&                                                  \
+    !CORTEX_IS_VALID_KERNEL_PRIORITY(STM32_PWM_TIM10_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to TIM10"
+#endif
+
+#if STM32_PWM_USE_TIM11 &&                                                  \
+    !CORTEX_IS_VALID_KERNEL_PRIORITY(STM32_PWM_TIM11_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to TIM11"
 #endif
 
 /*===========================================================================*/
@@ -465,6 +517,14 @@ extern PWMDriver PWMD8;
 
 #if STM32_PWM_USE_TIM9 && !defined(__DOXYGEN__)
 extern PWMDriver PWMD9;
+#endif
+
+#if STM32_PWM_USE_TIM10 && !defined(__DOXYGEN__)
+extern PWMDriver PWMD10;
+#endif
+
+#if STM32_PWM_USE_TIM11 && !defined(__DOXYGEN__)
+extern PWMDriver PWMD11;
 #endif
 
 #ifdef __cplusplus

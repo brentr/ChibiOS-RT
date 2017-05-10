@@ -91,6 +91,22 @@ PWMDriver PWMD8;
 PWMDriver PWMD9;
 #endif
 
+/**
+ * @brief   PWMD11 driver identifier.
+ * @note    The driver PWMD11 allocates the timer TIM10 when enabled.
+ */
+#if STM32_PWM_USE_TIM10 || defined(__DOXYGEN__)
+PWMDriver PWMD10;
+#endif
+
+/**
+ * @brief   PWMD11 driver identifier.
+ * @note    The driver PWMD11 allocates the timer TIM11 when enabled.
+ */
+#if STM32_PWM_USE_TIM11 || defined(__DOXYGEN__)
+PWMDriver PWMD11;
+#endif
+
 /*===========================================================================*/
 /* Driver local variables and types.                                         */
 /*===========================================================================*/
@@ -385,6 +401,18 @@ void pwm_lld_init(void) {
   pwmObjectInit(&PWMD9);
   PWMD9.tim = STM32_TIM9;
 #endif
+
+#if STM32_PWM_USE_TIM10
+  /* Driver initialization.*/
+  pwmObjectInit(&PWMD10);
+  PWMD10.tim = STM32_TIM10;
+#endif
+
+#if STM32_PWM_USE_TIM11
+  /* Driver initialization.*/
+  pwmObjectInit(&PWMD11);
+  PWMD11.tim = STM32_TIM11;
+#endif
 }
 
 /**
@@ -476,6 +504,24 @@ void pwm_lld_start(PWMDriver *pwmp) {
       rccResetTIM9();
       nvicEnableVector(STM32_TIM9_NUMBER,
                        CORTEX_PRIORITY_MASK(STM32_PWM_TIM9_IRQ_PRIORITY));
+      pwmp->clock = STM32_TIMCLK2;
+    }
+#endif
+#if STM32_PWM_USE_TIM10
+    if (&PWMD10 == pwmp) {
+      rccEnableTIM10(FALSE);
+      rccResetTIM10();
+      nvicEnableVector(STM32_TIM10_NUMBER,
+                       CORTEX_PRIORITY_MASK(STM32_PWM_TIM10_IRQ_PRIORITY));
+      pwmp->clock = STM32_TIMCLK2;
+    }
+#endif
+#if STM32_PWM_USE_TIM11
+    if (&PWMD11 == pwmp) {
+      rccEnableTIM11(FALSE);
+      rccResetTIM11();
+      nvicEnableVector(STM32_TIM11_NUMBER,
+                       CORTEX_PRIORITY_MASK(STM32_PWM_TIM11_IRQ_PRIORITY));
       pwmp->clock = STM32_TIMCLK2;
     }
 #endif
