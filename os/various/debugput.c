@@ -30,7 +30,7 @@
  * Small working area for the debug output thread
  */
 static Thread *debugReader;
-static WORKING_AREA(debugReaderArea, 80);
+static WORKING_AREA(debugReaderArea, 128);
 static OutputQueue debugOutQ;
 static MUTEX_DECL(debugOutLock);
 
