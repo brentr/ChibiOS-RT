@@ -357,14 +357,14 @@
                                      PIN_OSPEED_400K(GPIOB_PIN13) |         \
                                      PIN_OSPEED_400K(GPIOB_PIN14) |         \
                                      PIN_OSPEED_400K(GPIOB_PIN15))
-#define VAL_GPIOB_PUPDR             (PIN_PUPDR_FLOATING(GPIOB_PIN0) |       \
-                                     PIN_PUPDR_FLOATING(GPIOB_PIN1) |       \
+#define VAL_GPIOB_PUPDR             (PIN_PUPDR_PULLDOWN(GPIOB_PIN0) |       \
+                                     PIN_PUPDR_PULLDOWN(GPIOB_PIN1) |       \
                                      PIN_PUPDR_FLOATING(GPIOB_BOOT1) |      \
                                      PIN_PUPDR_FLOATING(GPIOB_JTAG_TDO) |   \
                                      PIN_PUPDR_PULLDOWN(GPIOB_JTAG_TRST) |    \
                                      PIN_PUPDR_PULLDOWN(GPIOB_PIN5) |         \
-                                     PIN_PUPDR_FLOATING(GPIOB_PIN6) |       \
-                                     PIN_PUPDR_FLOATING(GPIOB_PIN7) |       \
+                                     PIN_PUPDR_PULLDOWN(GPIOB_PIN6) |       \
+                                     PIN_PUPDR_PULLDOWN(GPIOB_PIN7) |       \
                                      PIN_PUPDR_PULLDOWN(GPIOB_PIN8) |         \
                                      PIN_PUPDR_PULLDOWN(GPIOB_PIN9) |         \
                                      PIN_PUPDR_PULLDOWN(GPIOB_PIN10) |        \
