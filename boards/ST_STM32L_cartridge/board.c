@@ -12,7 +12,7 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-    
+
     ESP Elf Cartridge board
 */
 
@@ -48,10 +48,14 @@ const PALConfig pal_default_config =
  *          and before any other initialization.
  */
 void __early_init(void) {
+  //wait ~500ms for logic power supply capacitors to slowly charge
+  //each iteration of loop below takes roughly 3 microseconds.
+  volatile unsigned count = 500 * 333;
+  while(--count) ;
 
   //drive cartLogicStart (GPIOB_BOOT1) bit high before enabling high-speed CPU operation
    _pal_lld_init(&pal_default_config);
-  
+
   stm32_clock_init();
 }
 
