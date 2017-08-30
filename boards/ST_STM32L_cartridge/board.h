@@ -18,7 +18,7 @@
 #define _BOARD_H_
 
 /*
- * Setup for ST STM32L-Discovery board.
+ * Setup for MBARI ESP3 Cartridge Elf
  */
 
 /*
@@ -192,10 +192,10 @@
  * PA14 - JTAG_TCK                  (alternate 0).
  * PA15 - JTAG_TDI                  (alternate 0).
  */
-#define VAL_GPIOA_MODER             (PIN_MODE_INPUT(GPIOA_PIN0) |         \
+#define VAL_GPIOA_MODER             (PIN_MODE_INPUT(GPIOA_PIN0) |           \
                                      PIN_MODE_INPUT(GPIOA_PIN1) |           \
                                      PIN_MODE_INPUT(GPIOA_PIN2) |           \
-                                     PIN_MODE_INPUT(GPIOA_PIN3) |           \
+                                     PIN_MODE_OUTPUT(GPIOA_PIN3) |          \
                                      PIN_MODE_INPUT(GPIOA_PIN4) |           \
                                      PIN_MODE_INPUT(GPIOA_PIN5) |           \
                                      PIN_MODE_INPUT(GPIOA_PIN6) |           \
@@ -208,7 +208,7 @@
                                      PIN_MODE_ALTERNATE(GPIOA_JTAG_TMS) |   \
                                      PIN_MODE_ALTERNATE(GPIOA_JTAG_TCK) |   \
                                      PIN_MODE_ALTERNATE(GPIOA_JTAG_TDI))
-#define VAL_GPIOA_OTYPER            (PIN_OTYPE_PUSHPULL(GPIOA_PIN0) |     \
+#define VAL_GPIOA_OTYPER            (PIN_OTYPE_PUSHPULL(GPIOA_PIN0) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOA_PIN1) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOA_PIN2) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOA_PIN3) |       \
@@ -243,7 +243,7 @@
 #define VAL_GPIOA_PUPDR             (PIN_PUPDR_FLOATING(GPIOA_PIN0) |       \
                                      PIN_PUPDR_FLOATING(GPIOA_PIN1) |       \
                                      PIN_PUPDR_PULLDOWN(GPIOA_PIN2) |         \
-                                     PIN_PUPDR_PULLDOWN(GPIOA_PIN3) |         \
+                                     PIN_PUPDR_FLOATING(GPIOA_PIN3) |         \
                                      PIN_PUPDR_PULLDOWN(GPIOA_PIN4) |         \
                                      PIN_PUPDR_PULLDOWN(GPIOA_PIN5) |         \
                                      PIN_PUPDR_PULLDOWN(GPIOA_PIN6) |         \
@@ -343,7 +343,7 @@
                                      PIN_OTYPE_PUSHPULL(GPIOB_PIN15))
 #define VAL_GPIOB_OSPEEDR           (PIN_OSPEED_400K(GPIOB_PIN0) |          \
                                      PIN_OSPEED_400K(GPIOB_PIN1) |          \
-                                     PIN_OSPEED_40M(GPIOB_BOOT1) |          \
+                                     PIN_OSPEED_400K(GPIOB_BOOT1) |         \
                                      PIN_OSPEED_40M(GPIOB_JTAG_TDO) |       \
                                      PIN_OSPEED_40M(GPIOB_JTAG_TRST) |      \
                                      PIN_OSPEED_400K(GPIOB_PIN5) |          \

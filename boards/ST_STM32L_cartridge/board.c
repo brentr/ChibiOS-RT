@@ -48,9 +48,9 @@ const PALConfig pal_default_config =
  *          and before any other initialization.
  */
 void __early_init(void) {
-  //wait ~100ms for logic power supply capacitors to charge
+  //wait ~30ms for logic power supply capacitors to charge
   //each iteration of loop below takes roughly 3 microseconds.
-  volatile unsigned count = 100 * 333;
+  volatile unsigned count = 30 * 333;
   while(--count) ;
 
   //drive cartLogicStart (GPIOB_BOOT1) bit high before enabling high-speed CPU operation
