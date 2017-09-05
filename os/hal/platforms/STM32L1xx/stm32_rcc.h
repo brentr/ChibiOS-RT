@@ -664,11 +664,41 @@
 #define rccDisableUSB(lp) rccDisableAPB1(RCC_APB1ENR_USBEN, lp)
 
 /**
+ * @name    USB peripheral specific RCC operations
+ * @{
+ */
+/**
+ * @brief   Enables the COMP peripheral clock.
+ *
+ * @param[in] lp        low power enable flag
+ *
+ * @api
+ */
+#define rccEnableCOMP(lp) rccEnableAPB1(RCC_APB1ENR_COMPEN, lp)
+
+/**
+ * @brief   Disables the COMP peripheral clock.
+ *
+ * @param[in] lp        low power enable flag
+ *
+ * @api
+ */
+#define rccDisableCOMP(lp) rccDisableAPB1(RCC_APB1ENR_COMPEN, lp)
+
+/**
  * @brief   Resets the USB peripheral.
  *
  * @api
  */
 #define rccResetUSB() rccResetAPB1(RCC_APB1RSTR_USBRST)
+/** @} */
+
+/**
+ * @brief   Resets the COMP peripheral.
+ *
+ * @api
+ */
+#define rccResetCOMP() rccResetAPB1(RCC_APB1ENR_COMPRST)
 /** @} */
 
 /*===========================================================================*/

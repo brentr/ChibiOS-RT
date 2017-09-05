@@ -295,8 +295,8 @@
  * PB0  - PIN0                      (input pulldown).
  * PB1  - PIN1                      (input pulldown).
  * PB2  - BOOT1                     (output pushpull -- driven high to cancel slow start).
- * PB3  - JTAG_TDO                  (alternate 0).
- * PB4  - JTAG_TRST                 (alternate 0).
+ * PB3  - JTAG_TDO                  (test input pulldown)
+ * PB4  - JTAG_TRST                 (process sensor input floating)
  * PB5  - PIN5                      (input pulldown).
  * PB6  - PIN6                      (input pulldown).
  * PB7  - PIN7                      (input pulldown).
@@ -312,8 +312,8 @@
 #define VAL_GPIOB_MODER             (PIN_MODE_INPUT(GPIOB_PIN0) |           \
                                      PIN_MODE_INPUT(GPIOB_PIN1) |           \
                                      PIN_MODE_OUTPUT(GPIOB_BOOT1) |         \
-                                     PIN_MODE_ALTERNATE(GPIOB_JTAG_TDO) |   \
-                                     PIN_MODE_ALTERNATE(GPIOB_JTAG_TRST) |  \
+                                     PIN_MODE_INPUT(GPIOB_JTAG_TDO) |   \
+                                     PIN_MODE_INPUT(GPIOB_JTAG_TRST) |  \
                                      PIN_MODE_INPUT(GPIOB_PIN5) |           \
                                      PIN_MODE_INPUT(GPIOB_PIN6) |          \
                                      PIN_MODE_INPUT(GPIOB_PIN7) |          \
@@ -344,8 +344,8 @@
 #define VAL_GPIOB_OSPEEDR           (PIN_OSPEED_400K(GPIOB_PIN0) |          \
                                      PIN_OSPEED_400K(GPIOB_PIN1) |          \
                                      PIN_OSPEED_400K(GPIOB_BOOT1) |         \
-                                     PIN_OSPEED_40M(GPIOB_JTAG_TDO) |       \
-                                     PIN_OSPEED_40M(GPIOB_JTAG_TRST) |      \
+                                     PIN_OSPEED_400K(GPIOB_JTAG_TDO) |      \
+                                     PIN_OSPEED_400K(GPIOB_JTAG_TRST) |     \
                                      PIN_OSPEED_400K(GPIOB_PIN5) |          \
                                      PIN_OSPEED_40M(GPIOB_PIN6) |           \
                                      PIN_OSPEED_40M(GPIOB_PIN7) |           \
@@ -360,9 +360,9 @@
 #define VAL_GPIOB_PUPDR             (PIN_PUPDR_PULLDOWN(GPIOB_PIN0) |       \
                                      PIN_PUPDR_PULLDOWN(GPIOB_PIN1) |       \
                                      PIN_PUPDR_FLOATING(GPIOB_BOOT1) |      \
-                                     PIN_PUPDR_FLOATING(GPIOB_JTAG_TDO) |   \
-                                     PIN_PUPDR_PULLDOWN(GPIOB_JTAG_TRST) |    \
-                                     PIN_PUPDR_PULLDOWN(GPIOB_PIN5) |         \
+                                     PIN_PUPDR_PULLDOWN(GPIOB_JTAG_TDO) |   \
+                                     PIN_PUPDR_FLOATING(GPIOB_JTAG_TRST) |  \
+                                     PIN_PUPDR_PULLDOWN(GPIOB_PIN5) |       \
                                      PIN_PUPDR_PULLDOWN(GPIOB_PIN6) |       \
                                      PIN_PUPDR_PULLDOWN(GPIOB_PIN7) |       \
                                      PIN_PUPDR_PULLDOWN(GPIOB_PIN8) |         \
