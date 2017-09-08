@@ -105,6 +105,24 @@
 #endif
 
 /**
+ * @brief   ICUD10 driver enable switch.
+ * @details If set to @p TRUE the support for ICUD10 is included.
+ * @note    The default is @p TRUE.
+ */
+#if !defined(STM32_ICU_USE_TIM10) || defined(__DOXYGEN__)
+#define STM32_ICU_USE_TIM10                  FALSE
+#endif
+
+/**
+ * @brief   ICUD11 driver enable switch.
+ * @details If set to @p TRUE the support for ICUD11 is included.
+ * @note    The default is @p TRUE.
+ */
+#if !defined(STM32_ICU_USE_TIM11) || defined(__DOXYGEN__)
+#define STM32_ICU_USE_TIM11                  FALSE
+#endif
+
+/**
  * @brief   ICUD1 interrupt priority level setting.
  */
 #if !defined(STM32_ICU_TIM1_IRQ_PRIORITY) || defined(__DOXYGEN__)
@@ -154,6 +172,22 @@
 #endif
 /** @} */
 
+/**
+ * @brief   ICUD10 interrupt priority level setting.
+ */
+#if !defined(STM32_ICU_TIM10_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define STM32_ICU_TIM10_IRQ_PRIORITY         7
+#endif
+/** @} */
+
+/**
+ * @brief   ICUD11 interrupt priority level setting.
+ */
+#if !defined(STM32_ICU_TIM11_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define STM32_ICU_TIM11_IRQ_PRIORITY         7
+#endif
+/** @} */
+
 /*===========================================================================*/
 /* Derived constants and error checks.                                       */
 /*===========================================================================*/
@@ -186,10 +220,18 @@
 #error "TIM9 not present in the selected device"
 #endif
 
+#if STM32_ICU_USE_TIM10 && !STM32_HAS_TIM10
+#error "TIM10 not present in the selected device"
+#endif
+
+#if STM32_ICU_USE_TIM11 && !STM32_HAS_TIM11
+#error "TIM11 not present in the selected device"
+#endif
+
 #if !STM32_ICU_USE_TIM1 && !STM32_ICU_USE_TIM2 &&                           \
     !STM32_ICU_USE_TIM3 && !STM32_ICU_USE_TIM4 &&                           \
-    !STM32_ICU_USE_TIM5 && !STM32_ICU_USE_TIM8 &&                           \
-    !STM32_ICU_USE_TIM9
+    !STM32_ICU_USE_TIM5 && !STM32_ICU_USE_TIM8 && !STM32_ICU_USE_TIM9 &&    \
+    !STM32_ICU_USE_TIM10 && !STM32_ICU_USE_TIM11
 #error "ICU driver activated but no TIM peripheral assigned"
 #endif
 
@@ -228,6 +270,16 @@
 #error "Invalid IRQ priority assigned to TIM9"
 #endif
 
+#if STM32_ICU_USE_TIM10 &&                                                   \
+    !CORTEX_IS_VALID_KERNEL_PRIORITY(STM32_ICU_TIM10_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to TIM10"
+#endif
+
+#if STM32_ICU_USE_TIM11 &&                                                   \
+    !CORTEX_IS_VALID_KERNEL_PRIORITY(STM32_ICU_TIM11_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to TIM11"
+#endif
+
 /*===========================================================================*/
 /* Driver data structures and types.                                         */
 /*===========================================================================*/
@@ -236,8 +288,10 @@
  * @brief   ICU driver mode.
  */
 typedef enum {
-  ICU_INPUT_ACTIVE_HIGH = 0,        /**< Trigger on rising edge.            */
-  ICU_INPUT_ACTIVE_LOW = 1,         /**< Trigger on falling edge.           */
+  ICU_INPUT_ACTIVE_HIGH,        /**< Trigger on rising edge.            */
+  ICU_INPUT_ACTIVE_LOW,         /**< Trigger on falling edge.           */
+  ICU_INPUT_EDGE,               /**< Trigger on either edge.            */
+  ICU_INPUT_MODES
 } icumode_t;
 
 /**
@@ -249,8 +303,9 @@ typedef uint32_t icufreq_t;
  * @brief   ICU channel type.
  */
 typedef enum {
-  ICU_CHANNEL_1 = 0,              /**< Use TIMxCH1.      */
-  ICU_CHANNEL_2 = 1,              /**< Use TIMxCH2.      */
+  ICU_CHANNEL_1,              /**< Use TIMxCH1.      */
+  ICU_CHANNEL_2,              /**< Use TIMxCH2.      */
+  ICU_CHANNELS
 } icuchannel_t;
 
 /**
@@ -316,21 +371,13 @@ struct ICUDriver {
 #endif
   /* End of the mandatory fields.*/
   /**
-   * @brief Timer base clock.
+   * @brief Timer base clock frequency Hz.
    */
   uint32_t                  clock;
   /**
    * @brief Pointer to the TIMx registers block.
    */
   stm32_tim_t               *tim;
-  /**
-   * @brief CCR register used for width capture.
-   */
-  volatile uint32_t         *wccrp;
-  /**
-   * @brief CCR register used for period capture.
-   */
-  volatile uint32_t         *pccrp;
 };
 
 /*===========================================================================*/
@@ -347,7 +394,7 @@ struct ICUDriver {
  *
  * @notapi
  */
-#define icu_lld_get_width(icup) (*((icup)->wccrp) + 1)
+#define icu_lld_get_width(icup) ((icup)->tim->CCR[(icup)->config->channel^1]+1)
 
 /**
  * @brief   Returns the width of the latest cycle.
@@ -359,7 +406,7 @@ struct ICUDriver {
  *
  * @notapi
  */
-#define icu_lld_get_period(icup) (*((icup)->pccrp) + 1)
+#define icu_lld_get_period(icup) ((icup)->tim->CCR[(icup)->config->channel]+1)
 
 /*===========================================================================*/
 /* External declarations.                                                    */
@@ -391,6 +438,14 @@ extern ICUDriver ICUD8;
 
 #if STM32_ICU_USE_TIM9 && !defined(__DOXYGEN__)
 extern ICUDriver ICUD9;
+#endif
+
+#if STM32_ICU_USE_TIM10 && !defined(__DOXYGEN__)
+extern ICUDriver ICUD10;
+#endif
+
+#if STM32_ICU_USE_TIM11 && !defined(__DOXYGEN__)
+extern ICUDriver ICUD11;
 #endif
 
 #ifdef __cplusplus
