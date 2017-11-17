@@ -59,7 +59,7 @@ static inline void crash(void)
   chSysHalt();      //restart applicaiton
 }
 
-#if !defined(CH_DEBUG_FAULTS) || defined(__DOXYGEN__)
+#if !CH_DBG_FAULTS || defined(__DOXYGEN__)
 
 /**
  * @brief   Generic Unhandled exceptions handler.
@@ -79,7 +79,7 @@ void _unhandled_exception(void) {crash();}
 
 #define unhandledSpecial(exception) unhandled(exception)
 
-#else  //if unoptimized compile, create unique exception handlers to aid debug
+#else  //create unique exception handlers to aid debugging faults 
 
 /*!
 * \file cortex_hardfault_handler.c --
