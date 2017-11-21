@@ -16,6 +16,8 @@
 /*
    Concepts and parts of this file have been contributed by Fabio Utzig and
    Xo Wang.
+    
+    Revised:  9/7/17 brent@mbari.org -- added TIM10 and TIM11 support
  */
 
 /**

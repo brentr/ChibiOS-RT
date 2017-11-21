@@ -12,6 +12,8 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+    
+    Revised:  9/7/17 brent@mbari.org -- added TIM10 and TIM11 support
 */
 
 /**
