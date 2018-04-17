@@ -13,7 +13,9 @@
     See the License for the specific language governing permissions and
     limitations under the License.
     
-    Revised:  9/7/17 brent@mbari.org -- added TIM10 and TIM11 support
+    Revised:  4/16/18 brent@mbari.org -- added TIM10 and TIM11 support
+    IMPORTANT:  TIM10 and TIM11 support only ICU_INPUT_EDGE mode 
+                because they lack the 2nd Capture/Compare register
 */
 
 /**

@@ -12,12 +12,13 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-*/
-/*
+
    Concepts and parts of this file have been contributed by Fabio Utzig and
    Xo Wang.
     
-    Revised:  9/7/17 brent@mbari.org -- added TIM10 and TIM11 support
+    Revised:  4/16/18 brent@mbari.org -- added TIM10 and TIM11 support
+    IMPORTANT:  TIM10 and TIM11 support only ICU_INPUT_EDGE mode 
+                because they lack the 2nd Capture/Compare register
  */
 
 /**
@@ -606,8 +607,8 @@ void icu_lld_start(ICUDriver *icup) {
        ICU_INPUT_ACTIVE_EDGE: Active on either edge */
 
     static const uint16_t edge[ICU_INPUT_MODES] = {
-      STM32_TIM_CCER_CC1E | STM32_TIM_CCER_CC1P | STM32_TIM_CCER_CC2E,
       STM32_TIM_CCER_CC1E | STM32_TIM_CCER_CC2E | STM32_TIM_CCER_CC2P,
+      STM32_TIM_CCER_CC1E | STM32_TIM_CCER_CC1P | STM32_TIM_CCER_CC2E,
       STM32_TIM_CCER_CC1E | STM32_TIM_CCER_CC1P | STM32_TIM_CCER_CC1NP
     };
     tim->CCER = edge[icup->config->mode];
@@ -622,8 +623,8 @@ void icu_lld_start(ICUDriver *icup) {
     tim->SMCR  = STM32_TIM_SMCR_TS(6) | STM32_TIM_SMCR_SMS(4);
 
     static const uint16_t edge[ICU_INPUT_MODES] = {
-      STM32_TIM_CCER_CC1E | STM32_TIM_CCER_CC2E | STM32_TIM_CCER_CC2P,
       STM32_TIM_CCER_CC1E | STM32_TIM_CCER_CC1P | STM32_TIM_CCER_CC2E,
+      STM32_TIM_CCER_CC1E | STM32_TIM_CCER_CC2E | STM32_TIM_CCER_CC2P,
       STM32_TIM_CCER_CC1E | STM32_TIM_CCER_CC1P | STM32_TIM_CCER_CC1NP
     };
     tim->CCER = edge[icup->config->mode];
