@@ -479,6 +479,7 @@ void i2cReleaseBus(I2CDriver *i2cp) {
 #elif CH_USE_SEMAPHORES
   chSemSignal(&i2cp->semaphore);
 #endif
+  (void) i2cp;
 }
 #endif /* I2C_USE_MUTUAL_EXCLUSION */
 

@@ -487,6 +487,17 @@ struct PWMDriver {
 #define pwm_lld_get_count(pwmp) ((pwmp)->tim->CNT)
 
 
+static inline void pwm_lld_disable_periodic_interrupt(PWMDriver *pwmp) {
+  pwmp->tim->DIER &= ~STM32_TIM_DIER_UIE;
+  pwmp->tim->SR &= ~STM32_TIM_DIER_UIE;
+}
+
+static inline void pwm_lld_enable_periodic_interrupt(PWMDriver *pwmp) {
+  if (pwmp->config->callback)
+    pwmp->tim->DIER |= STM32_TIM_DIER_UIE;
+}
+
+
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/

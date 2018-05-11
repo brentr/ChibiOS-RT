@@ -144,6 +144,7 @@ static void pwm_lld_serve_interrupt(PWMDriver *pwmp) {
 }
 #endif /* STM32_PWM_USE_TIM2 || ... || STM32_PWM_USE_TIM5 */
 
+
 /*===========================================================================*/
 /* Driver interrupt handlers.                                                */
 /*===========================================================================*/
@@ -348,6 +349,44 @@ CH_IRQ_HANDLER(STM32_TIM9_HANDLER) {
   CH_IRQ_EPILOGUE();
 }
 #endif /* STM32_PWM_USE_TIM9 */
+
+#if STM32_PWM_USE_TIM10
+#if !defined(STM32_TIM10_HANDLER)
+#error "STM32_TIM10_HANDLER not defined"
+#endif
+/**
+ * @brief   TIM10 interrupt handler.
+ *
+ * @isr
+ */
+CH_IRQ_HANDLER(STM32_TIM10_HANDLER) {
+
+  CH_IRQ_PROLOGUE();
+
+  pwm_lld_serve_interrupt(&PWMD10);
+
+  CH_IRQ_EPILOGUE();
+}
+#endif /* STM32_PWM_USE_TIM10 */
+
+#if STM32_PWM_USE_TIM11
+#if !defined(STM32_TIM11_HANDLER)
+#error "STM32_TIM11_HANDLER not defined"
+#endif
+/**
+ * @brief   TIM11 interrupt handler.
+ *
+ * @isr
+ */
+CH_IRQ_HANDLER(STM32_TIM11_HANDLER) {
+
+  CH_IRQ_PROLOGUE();
+
+  pwm_lld_serve_interrupt(&PWMD11);
+
+  CH_IRQ_EPILOGUE();
+}
+#endif /* STM32_PWM_USE_TIM11 */
 
 /*===========================================================================*/
 /* Driver exported functions.                                                */
@@ -640,6 +679,7 @@ void pwm_lld_start(PWMDriver *pwmp) {
                      STM32_TIM_CR1_CEN;
 }
 
+
 /**
  * @brief   Deactivates the PWM peripheral.
  *
@@ -703,6 +743,18 @@ void pwm_lld_stop(PWMDriver *pwmp) {
     }
 #endif
   }
+#if STM32_PWM_USE_TIM10
+    if (&PWMD10 == pwmp) {
+      nvicDisableVector(STM32_TIM10_NUMBER);
+      rccDisableTIM10(FALSE);
+    }
+#endif
+#if STM32_PWM_USE_TIM11
+    if (&PWMD11 == pwmp) {
+      nvicDisableVector(STM32_TIM11_NUMBER);
+      rccDisableTIM11(FALSE);
+    }
+#endif
 }
 
 /**
