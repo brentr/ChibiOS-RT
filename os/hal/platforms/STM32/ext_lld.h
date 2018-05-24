@@ -126,6 +126,41 @@ struct EXTDriver {
 /* Driver macros.                                                            */
 /*===========================================================================*/
 
+
+static inline void ext_lld_mask(unsigned channels)
+/*
+  Optimized common case of masking previously enabled edge interrupts
+*/
+{
+    EXTI->IMR   &= ~channels;
+    EXTI->EMR   &= ~channels;
+    EXTI->RTSR  &= ~channels;
+    EXTI->FTSR  &= ~channels;
+    EXTI->PR     =  channels;
+}
+
+static inline void ext_lld_unmask_falling(unsigned channels)
+/*
+  Optimized common case of unmasking previously disabled falling edge interrupts
+*/
+{
+  EXTI->RTSR &= ~channels;
+  EXTI->FTSR |= channels;
+  EXTI->IMR |= channels;
+  EXTI->EMR &= ~channels;
+}
+
+static inline void ext_lld_unmask_rising(unsigned channels)
+/*
+  Optimized common case of unmasking previously disabled rising edge interrupts
+*/
+{
+  EXTI->RTSR |= channels;
+  EXTI->FTSR &= ~channels;
+  EXTI->IMR |= channels;
+  EXTI->EMR &= ~channels;
+}
+
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/
