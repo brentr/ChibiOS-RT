@@ -396,7 +396,7 @@ typedef void
 */
 
 struct I2CSlaveMsg {
-  size_t     size;     /* sizeof(body) -- zero if master must wait */
+  size_t     size;     /* sizeof(body) */
   uint8_t   *body;     /* message contents -- or NULL if master must wait */
   I2CSlaveMsgCB *adrMatched;  /* invoked when slave address matches */
   I2CSlaveMsgCB *processMsg;  /* invoked after message is transferred */

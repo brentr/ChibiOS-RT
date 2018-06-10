@@ -345,6 +345,27 @@ static INLINE void endSlaveReplyDMA(I2CDriver *i2cp, size_t bytesRemaining)
   dmaStreamDisable(i2cp->dmatx);
 }
 
+
+/**
+ * @brief   set up DMA to discard received data
+ *
+ * @param[in] i2cp      pointer to the @p I2CDriver object
+ *
+ * @notapi
+ */
+static void rcv2bitBucket(I2CDriver *i2cp)
+{
+  static uint8_t bitbucket;
+
+  i2cp->i2c->CR1 &= ~I2C_CR1_ACK;  //NACK to induce master to STOP sending
+
+  /* discard data overrunning available rx buffer, but record total length */
+  dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode & ~STM32_DMA_CR_MINC);
+  dmaStreamSetMemory0(i2cp->dmarx, &bitbucket);
+  dmaStreamSetTransactionSize(i2cp->dmarx, 0xffff);
+  dmaStreamEnable(i2cp->dmarx);
+}
+
 #endif
 
 
@@ -785,10 +806,13 @@ qEvt(0x1111);
       if (rx->body && rx->size) {
         (void)dp->SR2;  /* clear I2C_SR1_ADDR */
          /* slave RX DMA setup.*/
-        dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
-        dmaStreamSetMemory0(i2cp->dmarx, rx->body);
-        dmaStreamSetTransactionSize(i2cp->dmarx, rx->size);
-        dmaStreamEnable(i2cp->dmarx);
+        if (rx->size) {
+          dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
+          dmaStreamSetMemory0(i2cp->dmarx, rx->body);
+          dmaStreamSetTransactionSize(i2cp->dmarx, rx->size);
+          dmaStreamEnable(i2cp->dmarx);
+        }else
+          rcv2bitBucket(i2cp);
         i2cp->mode = i2cSlaveRxing;
       }else{
         dp->CR2 &= ~I2C_CR2_ITEVTEN;
@@ -799,7 +823,7 @@ qEvt(0x1111);
 
    case I2C_EV2_SLAVE_RXSTOP:
 qEvt(0x2222);
-    dp->CR1 = regCR1;            /* clear STOPF */
+    dp->CR1 = regCR1 | I2C_CR1_ACK;   /* clear STOPF */
     i2cp->slaveErrors = I2CD_STOPPED; /* indicate that bus has been released */
 #if HAL_USE_I2C_STARTFIX
     i2cp->config->disarmStartDetect();
@@ -1033,16 +1057,11 @@ qEvt(0xaaaa);
 
 #if HAL_USE_I2C_SLAVE
   if (i2cp->mode < i2cIsMaster) {
-    static uint8_t bitbucket;
     if (i2cp->slaveBytes)
       i2cp->slaveBytes += 0xffff;
     else
       i2cp->slaveBytes = i2cp->slaveRx->size;
-    /* discard data overrunning available rx buffer, but record total length */
-    dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode & ~STM32_DMA_CR_MINC);
-    dmaStreamSetMemory0(i2cp->dmarx, &bitbucket);
-    dmaStreamSetTransactionSize(i2cp->dmarx, 0xffff);
-    dmaStreamEnable(i2cp->dmarx);
+    rcv2bitBucket(i2cp);
     return;
   }
 #endif
@@ -1641,16 +1660,19 @@ void i2c_lld_slaveReceive(I2CDriver *i2cp, const I2CSlaveMsg *rxMsg)
 {
   chDbgCheck((rxMsg && rxMsg->size <= 0xffff), "i2c_lld_slaveReceive");
   i2cp->slaveNextRx = rxMsg;
-  if (i2cp->mode == i2cLockedRxing && rxMsg->body && rxMsg->size) {
+  if (i2cp->mode == i2cLockedRxing && rxMsg->body) {
     /* We can receive now! */
     I2C_TypeDef *dp = i2cp->i2c;
     (void)dp->SR1, dp->SR2;  /* clear I2C_SR1_ADDR */
     i2cp->slaveRx = rxMsg;
     /* slave RX DMA setup */
-    dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
-    dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
-    dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
-    dmaStreamEnable(i2cp->dmarx);
+    if (rxMsg->size) {
+      dmaStreamSetMode(i2cp->dmarx, i2cp->rxdmamode);
+      dmaStreamSetMemory0(i2cp->dmarx, rxMsg->body);
+      dmaStreamSetTransactionSize(i2cp->dmarx, rxMsg->size);
+      dmaStreamEnable(i2cp->dmarx);
+    }else
+      rcv2bitBucket(i2cp);
     i2cp->mode = i2cSlaveRxing;
     dp->CR2 |= I2C_CR2_ITEVTEN;
   }

@@ -60,7 +60,7 @@ extern "C" {
  *
  * @details MatchAddress calls are cumulative.
  *          Specify address zero to match I2C "all call"
- *          Most hardware supports matching only a signle nonzero address.
+ *          Most hardware supports matching only a single nonzero address.
  *
  * @api
  */
@@ -260,8 +260,8 @@ static INLINE
 
   Each callback function may alter the processing of subsequent I2C
   messages and read requests by calling i2cSlaveReceive() and
-  i2cSlaveReply(), respectively.  Further, callbacks may alter their
-  i2cSlaveMsg structs in RAM, but only those for there own channel.
+  i2CSlaveReply(), respectively.  Further, callbacks may alter their
+  i2CSlaveMsg structs in RAM, but only those for their own channel.
   Such changes take immediate affect.  This facility can be used to
   avoid copying message buffers.
 
@@ -271,19 +271,27 @@ static INLINE
   Note that, I2CSlaveMsg structs may be modified
   in place within a channel's callbacks to the same effect.
 
-  A NULL body pointer or zero size causes the slave to signal the master node
+  A NULL body pointer causes the slave to signal the master node
   to wait by holding the I2C clock signal low, "stretching it", during the next
   transaction to which that I2CSlaveMsg applies.
   The I2C clock resumes only after a i2cSlaveSetReceive() or SetReply() is
   called with an I2CSlaveMsg containing a non-NULL body,
   or after the transaction timeout expires.
 
-  Therefore, if a NULL body pointer is replaced with a non-NULL one or
-  a zero length is replaced with a non-zero one, i2cSlaveReceive() or
-  i2cSlaveReply() MUST be called -- even if with the same pointer values --
+  Bytes received from the bus master after the slave's body buffer is full
+  are not acknowledged.  They are NACK'd, which should cause the master to 
+  STOP the bus transaction.
+  
+  Therefore, if a NULL body pointer is replaced with a non-NULL one,
+  i2cSlaveReceive() or i2cSlaveReply() MUST be called 
   to inform the i2c driver that the transaction may resume.
 
   Note that Receive and Reply processing is initially "locked".
+  Attempting to master the bus while "locked" will likely result in deadlock.
+  
+  Configuring a non-NULL body pointer with zero byte buffer size will
+  cause the slave to acknowledge only its address.  All data bytes will be
+  NACK'd.  This configuration allows the node to master the bus safely.
 */
 
 /**
