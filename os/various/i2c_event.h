@@ -93,7 +93,7 @@ typedef struct i2cEventConfig {
     i2cEventConfigQueue(channel##Q, (depth), __VA_ARGS__)
 
 /*
-   Example of allocating a queued I2C channel with a 4 deep event queue
+   Example of allocating an I2C channel with a 4 deep event queue
 
   //allocate i2c configuration and associated queue
   i2cEventChannel(myI2C, 4, OPMODE_I2C, 100000, STD_DUTY_CYCLE);

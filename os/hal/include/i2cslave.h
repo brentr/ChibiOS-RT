@@ -271,27 +271,35 @@ static INLINE
   Note that, I2CSlaveMsg structs may be modified
   in place within a channel's callbacks to the same effect.
 
-  A NULL body pointer causes the slave to signal the master node
-  to wait by holding the I2C clock signal low, "stretching it", during the next
-  transaction to which that I2CSlaveMsg applies.
-  The I2C clock resumes only after a i2cSlaveSetReceive() or SetReply() is
-  called with an I2CSlaveMsg containing a non-NULL body,
-  or after the transaction timeout expires.
+  A NULL body pointer (or zero body length for replies) causes the slave to
+  signal the master node to wait by holding the I2C clock signal low,
+  stalling the next transaction to which that I2CSlaveMsg applies.
 
-  Bytes received from the bus master after the slave's body buffer is full
-  are not acknowledged.  They are NACK'd, which should cause the master to 
-  STOP the bus transaction.
-  
-  Therefore, if a NULL body pointer is replaced with a non-NULL one,
-  i2cSlaveReceive() or i2cSlaveReply() MUST be called 
-  to inform the i2c driver that the transaction may resume.
+  When slave is receiving:
+    The I2C clock can continue only after i2cSlaveSetReceive() is
+    called with an I2CSlaveMsg containing a non-NULL body.
+    Bytes received from the bus master after the slave's body buffer is full
+    are not acknowledged.  They are NACK'd, which should cause the master to
+    STOP the bus transaction.
 
-  Note that Receive and Reply processing is initially "locked".
-  Attempting to master the bus while "locked" will likely result in deadlock.
-  
-  Configuring a non-NULL body pointer with zero byte buffer size will
-  cause the slave to acknowledge only its address.  All data bytes will be
-  NACK'd.  This configuration allows the node to master the bus safely.
+  When slave is replying:
+    The I2C clock resumes only after i2cSlaveSetReply() is
+    called with an I2CSlaveMsg containing a non-NULL body AND a non-zero size.
+    Bytes solicited from the master beyond the size of the slave's configured
+    reply string cause that reply's last byte to be repeatedly transmitted.
+
+  Any transaction terminates after the transaction timeout expires.
+
+  Either i2cSlaveReceive() or i2cSlaveReply(), respectively, MUST be called
+  to resume a stalled receive or slave reply.
+
+  Note that Receive and Reply processing is initially stretching the I2C clock.
+  Attempting to master the bus in this state will likely result in bus deadlock.
+
+  For message receive (not reply!), configuring a non-NULL body pointer with
+  zero byte buffer size will cause the slave to acknowledge only its address.
+  All data bytes will be NACK'd.  This configuration allows the slave
+  to master the bus without risking deadlock.
 */
 
 /**

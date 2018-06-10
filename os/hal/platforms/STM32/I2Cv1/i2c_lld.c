@@ -803,7 +803,7 @@ qEvt(0x1111);
       const I2CSlaveMsg *rx = i2cp->slaveNextRx;
       rx->adrMatched(i2cp);
       rx = i2cp->slaveRx = i2cp->slaveNextRx;
-      if (rx->body && rx->size) {
+      if (rx->body) {
         (void)dp->SR2;  /* clear I2C_SR1_ADDR */
          /* slave RX DMA setup.*/
         if (rx->size) {
