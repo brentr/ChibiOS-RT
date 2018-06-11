@@ -39,8 +39,8 @@ typedef enum {
 typedef struct i2cEvent {
   i2cEventType  type;       /* event type */
   i2caddr_t     targetAdr;  /* target i2c address */
+  uint16        bytes;      /* # of bytes actually transferred */
   i2cflags_t    flags;      /* associated error mask -- zero for timeout */
-  size_t        bytes;      /* # of bytes actually transferred */
 } i2cEvent;
 
 typedef struct i2cEventQbody {  /* event queue body */
@@ -141,10 +141,14 @@ static INLINE
  * @param[out] inputBuffer  pointer to where to store received message body
  * @param[in] size          size of inputBuffer
  *
- * @return              pointer to i2cEvent struct
+ * @return              pointer to i2cEvent
  *
  * @details The returned pointer remains valid only until the next
  *          call to this function or i2cAnswer() described below.
+ *
+ *          Attempting to master the I2C bus from the I2C event processing
+ *          loop will deadlock if another master is awaiting a response from
+ *          this slave.
  *
  * @api
  **/
@@ -170,10 +174,11 @@ const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
  *          The returned pointer remains valid only until the next
  *          call to i2cAwaitEvent() or i2cAnswer().
  *
- * @notapi
+ * @api
  **/
 const i2cEvent *i2cAnswer(I2CDriver *i2cp,
                           const uint8_t *replyBuffer, size_t size);
+
 
 /** @} */
 

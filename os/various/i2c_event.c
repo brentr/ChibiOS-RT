@@ -40,8 +40,8 @@
 
 static I2CSlaveMsgCB  wakeOnRx, wakeOnQuery, wakeOnReplied, wakeOnError;
 
-const I2CSlaveMsg i2cQrx = {0, NULL, ignore, wakeOnRx, wakeOnError},
-     i2cQreply = {0, NULL, wakeOnQuery, wakeOnReplied, wakeOnError};
+const I2CSlaveMsg i2cQrx   = {0, NULL, ignore,      wakeOnRx,      wakeOnError},
+                  i2cQreply= {0, NULL, wakeOnQuery, wakeOnReplied, wakeOnError};
 
 
 /*===========================================================================*/
@@ -90,7 +90,7 @@ static void queueCurrentEvent(I2CDriver *i2cp, i2cEventType type)
       newest |= i2cQfull;  /* fifo just became full */
     body->newest = newest;
     next->type = type;
-    /* use i2c_lld_* calls below to avoid repeated consistency checks */
+    /* use i2c_lld_* calls below to avoid redundant consistency checks */
     next->targetAdr = i2c_lld_get_slaveTargetAdr(i2cp);
     next->flags = i2c_lld_get_slaveErrors(i2cp);
     next->bytes = i2c_lld_get_slaveBytes(i2cp);
@@ -150,7 +150,7 @@ static void wakeOnError(I2CDriver *i2cp)
 const i2cEvent  *i2cAwaitEvent(I2CDriver *i2cp,
                         uint8_t *inputBuffer, size_t size)
 {
-  chDbgCheck((i2cp!=NULL && inputBuffer!=NULL && size>0), "i2cAwaitEvent");
+  chDbgCheck((i2cp!=NULL && inputBuffer!=NULL), "i2cAwaitEvent");
   const i2cEventQ *i2cq = &((i2cEventConfig *)i2cp->config)->queue;
   i2cEventQbody *body = i2cq->body;
 
