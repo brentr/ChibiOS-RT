@@ -48,13 +48,16 @@ const PALConfig pal_default_config =
  *          and before any other initialization.
  */
 void __early_init(void) {
-  //wait ~30ms for logic power supply capacitors to charge
+  //wait logic supply to ramp up
   //each iteration of loop below takes roughly 3 microseconds.
-  volatile unsigned count = 30 * 333;
+  volatile unsigned count = logicSupplyMS * 333;
   while(--count) ;
 
   //drive cartLogicStart (GPIOB_BOOT1) bit high before enabling high-speed CPU operation
    _pal_lld_init(&pal_default_config);
+
+  count = 2*333;
+  while(--count) ;  //wait 2ms for FET to turn on after bypassing slow start.
 
   stm32_clock_init();
 }
