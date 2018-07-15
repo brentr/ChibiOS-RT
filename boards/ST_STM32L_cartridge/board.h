@@ -21,8 +21,6 @@
  * Setup for MBARI ESP3 Cartridge Elf
  */
 
-#define logicSupplyMS   200   //milliseconds for logic supply to stabilize
-
 /*
  * Board identifier.
  */

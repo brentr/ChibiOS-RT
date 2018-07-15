@@ -16,6 +16,8 @@
     ESP Elf Cartridge board
 */
 
+#define slowstartMs   200   //milliseconds for logic supply to stabilize
+
 #include "ch.h"
 #include "hal.h"
 
@@ -48,18 +50,39 @@ const PALConfig pal_default_config =
  *          and before any other initialization.
  */
 void __early_init(void) {
+  //first we must get our power consumption down as low as possible
+  //while waiting for supply voltage to ramp up before bypassing our
+  //slowstart resistor.  (this should get us down to < 100uA)
+
+  /* PWR clock enable.*/
+  RCC->APB1ENR = RCC_APB1ENR_PWREN;
+
+  //slow down the clock to 65kHz
+  RCC->ICSCR = (RCC->ICSCR & ~STM32_MSIRANGE_MASK) | STM32_MSIRANGE_64K;
+  while ((RCC->CR & RCC_CR_MSIRDY) == 0) ;  //await stable clock
+
+  //switch to lowest voltage possible and make ready for low regulator power
+  PWR->CR = STM32_VOS_1P2 | PWR_CR_LPSDSR;
+  PWR->CR |= PWR_CR_LPRUN; //enter low power run mode
+  //no need to await stable voltage -- let it fall during slowstart loop
+
+  /* disable PWR clock to save a tiny bit of power during slowstart */
+  RCC->APB1ENR = 0;
+
   //wait logic supply to ramp up
-  //each iteration of loop below takes roughly 3 microseconds.
-  volatile unsigned count = logicSupplyMS * 333;
+  //each iteration of loop below takes roughly 92 microseconds.
+  volatile unsigned count = slowstartMs * 11;
   while(--count) ;
 
-  //drive cartLogicStart (GPIOB_BOOT1) bit high before enabling high-speed CPU operation
+  //disable slowstart before enabling high-speed CPU operation
    _pal_lld_init(&pal_default_config);
 
-  count = 2*333;
+  count = 2*11;
   while(--count) ;  //wait 2ms for FET to turn on after bypassing slow start.
 
-  stm32_clock_init();
+  RCC->APB1ENR = RCC_APB1ENR_PWREN;
+  PWR->CR &= ~PWR_CR_LPRUN;  //exit low-power run, enabling main power regulator
+  stm32_clock_init();  //switch to high speed clock!
 }
 
 #if HAL_USE_SDC || defined(__DOXYGEN__)
