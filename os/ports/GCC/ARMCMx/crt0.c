@@ -34,6 +34,7 @@
  */
 
 #include <stdint.h>
+#include "chconf.h"  //allow app to override CRT0_* defines
 
 #if !defined(FALSE)
 #define FALSE       0
@@ -296,6 +297,9 @@ void ResetHandler(void) {
   asm volatile ("msr     CONTROL, %0" : : "r" (reg));
   asm volatile ("isb");
 
+  /* Early initialization hook invocation.*/
+  __early_init();
+
 #if CRT0_INIT_STACKS
   /* Main and Process stacks initialization.*/
   fill32(&__main_stack_base__,
@@ -305,9 +309,6 @@ void ResetHandler(void) {
          &__process_stack_end__,
          CRT0_STACKS_FILL_PATTERN);
 #endif
-
-  /* Early initialization hook invocation.*/
-  __early_init();
 
 #if CRT0_INIT_DATA
   /* DATA segment initialization.*/
