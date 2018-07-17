@@ -16,7 +16,7 @@
     ESP Elf Cartridge board
 */
 
-#define slowstartMs   100   //milliseconds for logic supply to stabilize
+#define slowstartMs   150   //milliseconds for logic supply to stabilize
 
 #include "ch.h"
 #include "hal.h"
