@@ -16,10 +16,11 @@
     ESP Elf Cartridge board
 */
 
-#define slowstartMs   2000   //milliseconds for logic supply to stabilize
+#include "pads.h"
 
-#include "ch.h"
-#include "hal.h"
+#define slowstartMs   1500   //milliseconds for logic supply to stabilize
+#define cartLogicStart GPIOB, 2   //limit 3.3V current until driven high
+#define AHB_EN_MASK RCC_AHBENR_GPIOBEN
 
 #if HAL_USE_PAL || defined(__DOXYGEN__)
 /**
@@ -78,7 +79,9 @@ void __early_init(void) {
   while(--count) ;
 
   //disable slowstart before enabling high-speed CPU operation
-   _pal_lld_init(&pal_default_config);
+  rccEnableAHB(AHB_EN_MASK, TRUE);
+  setPad(cartLogicStart);
+  configurePad(cartLogicStart, PAL_MODE_OUTPUT_PUSHPULL);
 
   RCC->APB1ENR = RCC_APB1ENR_PWREN;
   PWR->CR &= ~PWR_CR_LPRUN;  //exit low-power run, enabling main power regulator
