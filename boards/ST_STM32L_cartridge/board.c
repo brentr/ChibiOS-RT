@@ -16,7 +16,7 @@
     ESP Elf Cartridge board
 */
 
-#define slowstartMs   150   //milliseconds for logic supply to stabilize
+#define slowstartMs   2000   //milliseconds for logic supply to stabilize
 
 #include "ch.h"
 #include "hal.h"
@@ -61,30 +61,29 @@ void __early_init(void) {
   RCC->ICSCR = (RCC->ICSCR & ~STM32_MSIRANGE_MASK) | STM32_MSIRANGE_64K;
   while (!(RCC->CR & RCC_CR_MSIRDY)) ;  //await stable clock
 
-  //set Vcore to 1.5V (range 2) and make ready to disable main power regulator
-  PWR->CR = STM32_VOS_1P5 | PWR_CR_LPSDSR;
+  //set Vcore to 1.5V (range 2)
+  //also disable voltage reference and main power regulator in low-power state
+  PWR->CR = STM32_VOS_1P5 | PWR_CR_LPSDSR | PWR_CR_ULP;
   while ((PWR->CSR & PWR_CSR_VOSF)) ;   //wait until regulator is stable @1.5V
 
-  PWR->CR |= PWR_CR_LPRUN; //enter low power run mode
+  PWR->CR |= PWR_CR_LPRUN;    //enter low power run mode
   while(!(PWR->CSR & PWR_CSR_REGLPF)) ; //wait until regulator in low power mode
 
   /* disable PWR clock to save a tiny bit of power during slowstart */
   RCC->APB1ENR = 0;
 
   //wait for logic supply to ramp up
-  //each iteration of loop below takes roughly 92 microseconds with 65kHz clock.
-  volatile unsigned count = slowstartMs * 11;
+  //each iteration of loop below takes roughly 100 microseconds w/65kHz clock.
+  volatile unsigned count = slowstartMs * 10;
   while(--count) ;
 
   //disable slowstart before enabling high-speed CPU operation
    _pal_lld_init(&pal_default_config);
 
-  count = 2*11;
-  while(--count) ;  //wait 2ms for FET to turn on after bypassing slow start.
-
   RCC->APB1ENR = RCC_APB1ENR_PWREN;
   PWR->CR &= ~PWR_CR_LPRUN;  //exit low-power run, enabling main power regulator
   while((PWR->CSR & PWR_CSR_REGLPF)) ;  //wait until regulator back in main mode
+
   stm32_clock_init();  //switch to high speed clock!
 }
 
