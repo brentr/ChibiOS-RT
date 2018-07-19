@@ -14,15 +14,23 @@
     limitations under the License.
 
     ESP Elf Cartridge board
+    At reset, power is delivered through a 1kOhm resistor
+    Immediately enter low-power run mode
+    Digital input mode Schmitt triggers consume 500uA
+      Switch all possible GPIOs to Analog mode
+    After softstart delay, bypass the 1kOhm resistor
 */
 
 #include "pads.h"
 
-#define slowstartMs   1500   //milliseconds for logic supply to stabilize
-#define cartLogicStart GPIOB, 2   //limit 3.3V current until driven high
-#define AHB_EN_MASK RCC_AHBENR_GPIOBEN
+#define slowstartMs     50         //milliseconds for slow start
+#define cartLogicStart  GPIOB, 2   //limit 3.3V current until driven high
 
-#if HAL_USE_PAL || defined(__DOXYGEN__)
+//clock enable for all ports
+#define AHB_EN_MASK     (RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN |   \
+                         RCC_AHBENR_GPIOCEN | RCC_AHBENR_GPIODEN |   \
+                         RCC_AHBENR_GPIOEEN | RCC_AHBENR_GPIOHEN)
+
 /**
  * @brief   PAL setup.
  * @details Digital I/O ports static configuration as defined in @p board.h.
@@ -43,7 +51,8 @@ const PALConfig pal_default_config =
   {VAL_GPIOH_MODER, VAL_GPIOH_OTYPER, VAL_GPIOH_OSPEEDR, VAL_GPIOH_PUPDR,
    VAL_GPIOH_ODR,   VAL_GPIOH_AFRL,   VAL_GPIOH_AFRH}
 };
-#endif
+
+
 
 /**
  * @brief   Early initialization code.
@@ -55,11 +64,19 @@ void __early_init(void) {
   //while waiting for supply voltage to ramp up before bypassing our
   //slowstart resistor.  (this should get us down to < 100uA)
 
-  /* PWR clock enable.*/
-  RCC->APB1ENR = RCC_APB1ENR_PWREN;
+  //switch to lowest power GPIO configuration possible
+  RCC->AHBENR |= AHB_EN_MASK;
+  GPIOA->MODER = INITIAL_GPIOA_MODER;
+  GPIOB->MODER = INITIAL_GPIOB_MODER;
+  GPIOC->MODER = INITIAL_GPIOC_MODER;
+  GPIOD->MODER = INITIAL_GPIOD_MODER;
+  GPIOE->MODER = INITIAL_GPIOE_MODER;
+  GPIOH->MODER = INITIAL_GPIOH_MODER;
 
   //slow down the clock to 65kHz
+  RCC->APB1ENR = RCC_APB1ENR_PWREN;
   RCC->ICSCR = (RCC->ICSCR & ~STM32_MSIRANGE_MASK) | STM32_MSIRANGE_64K;
+
   while (!(RCC->CR & RCC_CR_MSIRDY)) ;  //await stable clock
 
   //set Vcore to 1.5V (range 2)
@@ -68,22 +85,17 @@ void __early_init(void) {
   while ((PWR->CSR & PWR_CSR_VOSF)) ;   //wait until regulator is stable @1.5V
 
   PWR->CR |= PWR_CR_LPRUN;    //enter low power run mode
-  while(!(PWR->CSR & PWR_CSR_REGLPF)) ; //wait until regulator in low power mode
-
-  /* disable PWR clock to save a tiny bit of power during slowstart */
-  RCC->APB1ENR = 0;
+//while(!(PWR->CSR & PWR_CSR_REGLPF)) ; //wait until regulator in low power mode
 
   //wait for logic supply to ramp up
   //each iteration of loop below takes roughly 100 microseconds w/65kHz clock.
   volatile unsigned count = slowstartMs * 10;
   while(--count) ;
 
-  //disable slowstart before enabling high-speed CPU operation
-  rccEnableAHB(AHB_EN_MASK, TRUE);
+  //bypass slowstart before enabling high-speed CPU operation
   setPad(cartLogicStart);
   configurePad(cartLogicStart, PAL_MODE_OUTPUT_PUSHPULL);
 
-  RCC->APB1ENR = RCC_APB1ENR_PWREN;
   PWR->CR &= ~PWR_CR_LPRUN;  //exit low-power run, enabling main power regulator
   while((PWR->CSR & PWR_CSR_REGLPF)) ;  //wait until regulator back in main mode
 

@@ -192,6 +192,22 @@
  * PA14 - JTAG_TCK                  (alternate 0).
  * PA15 - JTAG_TDI                  (alternate 0).
  */
+#define INITIAL_GPIOA_MODER         (PIN_MODE_ANALOG(GPIOA_PIN0) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN1) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN2) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN3) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN4) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN5) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN6) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN7) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN8) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN9) |           \
+                                     PIN_MODE_ANALOG(GPIOA_PIN10) |          \
+                                     PIN_MODE_ANALOG(GPIOA_PIN11) |          \
+                                     PIN_MODE_ANALOG(GPIOA_PIN12) |          \
+                                     PIN_MODE_ALTERNATE(GPIOA_JTAG_TMS) |   \
+                                     PIN_MODE_ALTERNATE(GPIOA_JTAG_TCK) |   \
+                                     PIN_MODE_ALTERNATE(GPIOA_JTAG_TDI))
 #define VAL_GPIOA_MODER             (PIN_MODE_INPUT(GPIOA_PIN0) |           \
                                      PIN_MODE_INPUT(GPIOA_PIN1) |           \
                                      PIN_MODE_INPUT(GPIOA_PIN2) |           \
@@ -309,14 +325,30 @@
  * PB14 - PIN14                     (input pulldown).
  * PB15 - PIN15                     (input pulldown).
  */
+#define INITIAL_GPIOB_MODER         (PIN_MODE_ANALOG(GPIOB_PIN0) |       \
+                                     PIN_MODE_ANALOG(GPIOB_PIN1) |       \
+                                     PIN_MODE_ANALOG(GPIOB_BOOT1) |      \
+                                     PIN_MODE_ANALOG(GPIOB_JTAG_TDO) |   \
+                                     PIN_MODE_ANALOG(GPIOB_JTAG_TRST) |  \
+                                     PIN_MODE_ANALOG(GPIOB_PIN5) |       \
+                                     PIN_MODE_ANALOG(GPIOB_PIN6) |       \
+                                     PIN_MODE_ANALOG(GPIOB_PIN7) |       \
+                                     PIN_MODE_ANALOG(GPIOB_PIN8) |       \
+                                     PIN_MODE_ANALOG(GPIOB_PIN9) |       \
+                                     PIN_MODE_ANALOG(GPIOB_PIN10) |      \
+                                     PIN_MODE_ANALOG(GPIOB_PIN11) |      \
+                                     PIN_MODE_ANALOG(GPIOB_PIN12) |      \
+                                     PIN_MODE_ANALOG(GPIOB_PIN13) |      \
+                                     PIN_MODE_ANALOG(GPIOB_PIN14) |      \
+                                     PIN_MODE_ANALOG(GPIOB_PIN15))
 #define VAL_GPIOB_MODER             (PIN_MODE_INPUT(GPIOB_PIN0) |           \
                                      PIN_MODE_INPUT(GPIOB_PIN1) |           \
                                      PIN_MODE_OUTPUT(GPIOB_BOOT1) |         \
-                                     PIN_MODE_INPUT(GPIOB_JTAG_TDO) |   \
-                                     PIN_MODE_INPUT(GPIOB_JTAG_TRST) |  \
+                                     PIN_MODE_INPUT(GPIOB_JTAG_TDO) |       \
+                                     PIN_MODE_INPUT(GPIOB_JTAG_TRST) |      \
                                      PIN_MODE_INPUT(GPIOB_PIN5) |           \
-                                     PIN_MODE_INPUT(GPIOB_PIN6) |          \
-                                     PIN_MODE_INPUT(GPIOB_PIN7) |          \
+                                     PIN_MODE_INPUT(GPIOB_PIN6) |           \
+                                     PIN_MODE_INPUT(GPIOB_PIN7) |           \
                                      PIN_MODE_INPUT(GPIOB_PIN8) |           \
                                      PIN_MODE_INPUT(GPIOB_PIN9) |           \
                                      PIN_MODE_INPUT(GPIOB_PIN10) |          \
@@ -426,6 +458,22 @@
  * PC14 - OSC32_IN                  (input floating).
  * PC15 - OSC32_OUT                 (input floating).
  */
+#define INITIAL_GPIOC_MODER         (PIN_MODE_ANALOG(GPIOC_PIN0) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN1) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN2) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN3) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN4) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN5) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN6) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN7) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN8) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN9) |          \
+                                     PIN_MODE_ANALOG(GPIOC_PIN10) |         \
+                                     PIN_MODE_ANALOG(GPIOC_PIN11) |         \
+                                     PIN_MODE_ANALOG(GPIOC_PIN12) |         \
+                                     PIN_MODE_ANALOG(GPIOC_PIN13) |         \
+                                     PIN_MODE_ANALOG(GPIOC_OSC32_IN) |      \
+                                     PIN_MODE_ANALOG(GPIOC_OSC32_OUT))
 #define VAL_GPIOC_MODER             (PIN_MODE_INPUT(GPIOC_PIN0) |           \
                                      PIN_MODE_INPUT(GPIOC_PIN1) |           \
                                      PIN_MODE_INPUT(GPIOC_PIN2) |           \
@@ -543,6 +591,22 @@
  * PD14 - PIN14                     (input pulldown).
  * PD15 - PIN15                     (input pulldown).
  */
+#define INITIAL_GPIOD_MODER         (PIN_MODE_ANALOG(GPIOD_PIN0) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN1) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN2) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN3) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN4) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN5) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN6) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN7) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN8) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN9) |           \
+                                     PIN_MODE_ANALOG(GPIOD_PIN10) |          \
+                                     PIN_MODE_ANALOG(GPIOD_PIN11) |          \
+                                     PIN_MODE_ANALOG(GPIOD_PIN12) |          \
+                                     PIN_MODE_ANALOG(GPIOD_PIN13) |          \
+                                     PIN_MODE_ANALOG(GPIOD_PIN14) |          \
+                                     PIN_MODE_ANALOG(GPIOD_PIN15))
 #define VAL_GPIOD_MODER             (PIN_MODE_INPUT(GPIOD_PIN0) |           \
                                      PIN_MODE_INPUT(GPIOD_PIN1) |           \
                                      PIN_MODE_INPUT(GPIOD_PIN2) |           \
@@ -660,6 +724,22 @@
  * PE14 - PIN14                     (input pulldown).
  * PE15 - PIN15                     (input pulldown).
  */
+#define INITIAL_GPIOE_MODER         (PIN_MODE_ANALOG(GPIOE_PIN0) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN1) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN2) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN3) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN4) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN5) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN6) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN7) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN8) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN9) |           \
+                                     PIN_MODE_ANALOG(GPIOE_PIN10) |          \
+                                     PIN_MODE_ANALOG(GPIOE_PIN11) |          \
+                                     PIN_MODE_ANALOG(GPIOE_PIN12) |          \
+                                     PIN_MODE_ANALOG(GPIOE_PIN13) |          \
+                                     PIN_MODE_ANALOG(GPIOE_PIN14) |          \
+                                     PIN_MODE_ANALOG(GPIOE_PIN15))
 #define VAL_GPIOE_MODER             (PIN_MODE_INPUT(GPIOE_PIN0) |           \
                                      PIN_MODE_INPUT(GPIOE_PIN1) |           \
                                      PIN_MODE_INPUT(GPIOE_PIN2) |           \
@@ -777,6 +857,22 @@
  * PH14 - PIN14                     (input pulldown).
  * PH15 - PIN15                     (input pulldown).
  */
+#define INITIAL_GPIOH_MODER         (PIN_MODE_ANALOG(GPIOH_OSC_IN) |         \
+                                     PIN_MODE_ANALOG(GPIOH_OSC_OUT) |        \
+                                     PIN_MODE_ANALOG(GPIOH_PIN2) |           \
+                                     PIN_MODE_ANALOG(GPIOH_PIN3) |           \
+                                     PIN_MODE_ANALOG(GPIOH_PIN4) |           \
+                                     PIN_MODE_ANALOG(GPIOH_PIN5) |           \
+                                     PIN_MODE_ANALOG(GPIOH_PIN6) |           \
+                                     PIN_MODE_ANALOG(GPIOH_PIN7) |           \
+                                     PIN_MODE_ANALOG(GPIOH_PIN8) |           \
+                                     PIN_MODE_ANALOG(GPIOH_PIN9) |           \
+                                     PIN_MODE_ANALOG(GPIOH_PIN10) |          \
+                                     PIN_MODE_ANALOG(GPIOH_PIN11) |          \
+                                     PIN_MODE_ANALOG(GPIOH_PIN12) |          \
+                                     PIN_MODE_ANALOG(GPIOH_PIN13) |          \
+                                     PIN_MODE_ANALOG(GPIOH_PIN14) |          \
+                                     PIN_MODE_ANALOG(GPIOH_PIN15))
 #define VAL_GPIOH_MODER             (PIN_MODE_INPUT(GPIOH_OSC_IN) |         \
                                      PIN_MODE_INPUT(GPIOH_OSC_OUT) |        \
                                      PIN_MODE_INPUT(GPIOH_PIN2) |           \
