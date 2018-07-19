@@ -15,9 +15,11 @@
 
     ESP Elf Cartridge board
     At reset, power is delivered through a 1kOhm resistor
+    Need to get power consumption down < 100uA quickly
     Immediately enter low-power run mode
-    Digital input mode Schmitt triggers consume 500uA
-      Switch all possible GPIOs to Analog mode
+    This gets to about 180uA
+    Digital input mode Schmitt triggers consume 100uA
+      Switch all possible GPIOs to Analog mode to reach 60-80uA
     After softstart delay, bypass the 1kOhm resistor
 */
 
@@ -26,7 +28,7 @@
 #define slowstartMs     50         //milliseconds for slow start
 #define cartLogicStart  GPIOB, 2   //limit 3.3V current until driven high
 
-//clock enable for all ports
+//clock enables to reconfigure all GPIO ports
 #define AHB_EN_MASK     (RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN |   \
                          RCC_AHBENR_GPIOCEN | RCC_AHBENR_GPIODEN |   \
                          RCC_AHBENR_GPIOEEN | RCC_AHBENR_GPIOHEN)
@@ -57,12 +59,12 @@ const PALConfig pal_default_config =
 /**
  * @brief   Early initialization code.
  * @details This initialization must be performed just after stack setup
- *          and before any other initialization.
+ *          and *before* writing stack pattern and any other initialization.
  */
 void __early_init(void) {
   //first we must get our power consumption down as low as possible
   //while waiting for supply voltage to ramp up before bypassing our
-  //slowstart resistor.  (this should get us down to < 100uA)
+  //slowstart resistor.  (this gets us down to ~ 70uA)
 
   //switch to lowest power GPIO configuration possible
   RCC->AHBENR |= AHB_EN_MASK;
@@ -76,7 +78,6 @@ void __early_init(void) {
   //slow down the clock to 65kHz
   RCC->APB1ENR = RCC_APB1ENR_PWREN;
   RCC->ICSCR = (RCC->ICSCR & ~STM32_MSIRANGE_MASK) | STM32_MSIRANGE_64K;
-
   while (!(RCC->CR & RCC_CR_MSIRDY)) ;  //await stable clock
 
   //set Vcore to 1.5V (range 2)
@@ -85,6 +86,7 @@ void __early_init(void) {
   while ((PWR->CSR & PWR_CSR_VOSF)) ;   //wait until regulator is stable @1.5V
 
   PWR->CR |= PWR_CR_LPRUN;    //enter low power run mode
+  // no need to wait for this.
 //while(!(PWR->CSR & PWR_CSR_REGLPF)) ; //wait until regulator in low power mode
 
   //wait for logic supply to ramp up
