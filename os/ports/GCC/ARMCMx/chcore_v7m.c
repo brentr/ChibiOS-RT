@@ -260,8 +260,8 @@ void _port_thread_start(void) {
 
   chSysUnlock();
   asm volatile ("mov     r0, r5                                 \n\t"
-                "blx     r4                                     \n\t"
-                "bl      chThdExit");
+                "blx     r4");
+  chThdExit(RDY_OK);
 }
 
 /** @} */
