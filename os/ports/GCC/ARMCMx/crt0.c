@@ -260,21 +260,21 @@ void _start(void) {
   SCB_FPDSCR = reg;
 #endif
 
+  /* Prevent aliasing and reordering related issues.*/
+  asm ("" : : : "memory");
+
+  /* Early initialization hook invocation.*/
+  __early_init();
+
+  /* Prevent aliasing and reordering related issues.*/
+  asm ("" : : : "memory");
+
 #if CRT0_INIT_STACKS
   /* Main stack initialization.*/
   fill32(&__main_stack_base__,
          &__main_stack_end__,
          CRT0_STACKS_FILL_PATTERN);
 #endif
-
-  /* Prevent aliasing and reordering related issues.*/
-  asm volatile ("" : : : "memory");
-
-  /* Early initialization hook invocation.*/
-  __early_init();
-
-  /* Prevent aliasing and reordering related issues.*/
-  asm volatile ("" : : : "memory");
 
 #if CRT0_INIT_DATA
   /* DATA segment initialization.*/
@@ -294,7 +294,7 @@ void _start(void) {
 #endif
 
   /* Prevent aliasing and reordering related issues.*/
-  asm volatile ("" : : : "memory");
+  asm ("" : : : "memory");
 
   /* Late initialization hook invocation.*/
   __late_init();
