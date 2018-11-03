@@ -79,7 +79,7 @@ void _unhandled_exception(void) {crash();}
 
 #define unhandledSpecial(exception) unhandled(exception)
 
-#else  //create unique exception handlers to aid debugging faults 
+#else  //create unique exception handlers to aid debugging faults
 
 /*!
 * \file cortex_hardfault_handler.c --
@@ -92,7 +92,7 @@ void _unhandled_exception(void) {crash();}
 * In the declaration below, we are assigning the assembler label __label_hardfaultGetContext__
 * to the entry point of __hardfaultGetContext__ function
 */
-void hardfaultGetContext(unsigned long* stackedContextPtr) asm("label_hardfaultGetContext");
+void __attribute__((used)) hardfaultGetContext(unsigned long* stackedContextPtr) asm("label_hardfaultGetContext");
 /*!
 * \fn void hardfaultGetContext(unsigned long* stackedContextPtr)
 * \brief Copies system stacked context into function local variables.
@@ -289,7 +289,7 @@ unhandled(VectorF0);
  * @brief   STM32L1xx vectors table.
  */
 #if !defined(__DOXYGEN__)
-__attribute__ ((section("vectors")))
+__attribute__ ((used, section("vectors")))
 #endif
 vectors_t _vectors = {
   &__main_stack_end__,ResetHandler,       NMIVector,          HardFaultVector,
