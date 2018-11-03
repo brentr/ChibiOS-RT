@@ -110,6 +110,13 @@
 /* Port configurable parameters (common).                                    */
 /*===========================================================================*/
 
+/**
+ * @brief   Stack segments initialization switch.
+ */
+#if !defined(CRT0_INIT_STACKS) || defined(__DOXYGEN__)
+#define CRT0_INIT_STACKS            TRUE
+#endif
+
 /*===========================================================================*/
 /* Port derived parameters (common).                                         */
 /*===========================================================================*/

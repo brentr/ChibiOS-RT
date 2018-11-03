@@ -33,22 +33,7 @@
  * @{
  */
 
-#include <stdint.h>
-#include "chconf.h"  //allow app to override CRT0_* defines
-
-#if !defined(FALSE)
-#define FALSE       0
-#endif
-
-#if !defined(TRUE)
-#define TRUE        (!FALSE)
-#endif
-
-#define SCB_CPACR               *((uint32_t *)0xE000ED88U)
-#define SCB_FPCCR               *((uint32_t *)0xE000EF34U)
-#define SCB_FPDSCR              *((uint32_t *)0xE000EF3CU)
-#define FPCCR_ASPEN             (0x1U << 31)
-#define FPCCR_LSPEN             (0x1U << 30)
+#include "ch.h"
 
 typedef void (*funcp_t)(void);
 typedef funcp_t * funcpp_t;
@@ -56,14 +41,13 @@ typedef funcp_t * funcpp_t;
 #define SYMVAL(sym) (uint32_t)(((uint8_t *)&(sym)) - ((uint8_t *)0))
 
 /*
- * Area fill code, it is a macro because here functions cannot be called
- * until stacks are initialized.
+ * Area fill code
  */
-#define fill32(start, end, filler) {                                        \
-  uint32_t *p1 = start;                                                     \
-  uint32_t *p2 = end;                                                       \
-  while (p1 < p2)                                                           \
-    *p1++ = filler;                                                         \
+static void fill32(void *start, void *end, uint32_t filler) {
+  uint32_t *p1 = start;
+  uint32_t *p2 = end;
+  while (p1 < p2)
+    *p1++ = filler;
 }
 
 /*===========================================================================*/
@@ -74,26 +58,10 @@ typedef funcp_t * funcpp_t;
 /*===========================================================================*/
 
 /**
- * @brief   Control special register initialization value.
- * @details The system is setup to run in privileged mode using the PSP
- *          stack (dual stack mode).
- */
-#if !defined(CRT0_CONTROL_INIT) || defined(__DOXYGEN__)
-#define CRT0_CONTROL_INIT           0x00000002
-#endif
-
-/**
  * @brief   Stack segments initialization switch.
  */
 #if !defined(CRT0_STACKS_FILL_PATTERN) || defined(__DOXYGEN__)
 #define CRT0_STACKS_FILL_PATTERN    0x55555555
-#endif
-
-/**
- * @brief   Stack segments initialization switch.
- */
-#if !defined(CRT0_INIT_STACKS) || defined(__DOXYGEN__)
-#define CRT0_INIT_STACKS            TRUE
 #endif
 
 /**
@@ -253,62 +221,60 @@ void __late_init(void) {}
  * @note    This function is a weak symbol.
  */
 #if !defined(__DOXYGEN__)
-__attribute__((weak, naked))
+__attribute__((weak))
 #endif
 void _default_exit(void) {
   while (1)
     ;
 }
 
-/**
- * @brief   Reset vector.
+/*
+ * Process stack initialization.
  */
-#if !defined(__DOXYGEN__)
-__attribute__((naked))
+#if CRT0_INIT_STACKS
+void _init_process_stack(void)
+{
+    fill32(&__process_stack_base__,
+         &__process_stack_end__,
+         CRT0_STACKS_FILL_PATTERN);
+}
 #endif
-void ResetHandler(void) {
-  uint32_t psp, reg;
 
-  /* Process Stack initialization, it is allocated starting from the
-     symbol __process_stack_end__ and its lower limit is the symbol
-     __process_stack_base__.*/
-  asm volatile ("cpsid   i");
-  psp = SYMVAL(__process_stack_end__);
-  asm volatile ("msr     PSP, %0" : : "r" (psp));
-
+/**
+ * @brief   Startup code.
+ */
+void _start(void) {
 #if CORTEX_USE_FPU
+  uint32_t reg;
+
   /* Initializing the FPU context save in lazy mode.*/
   SCB_FPCCR = FPCCR_ASPEN | FPCCR_LSPEN;
 
   /* CP10 and CP11 set to full access.*/
   SCB_CPACR |= 0x00F00000;
 
-  /* FPSCR and FPDSCR initially zero.*/
+  /* FPSCR and FPDSCR initially zero.
+     This will also set CONTROL.FPCA */
   reg = 0;
   asm volatile ("vmsr    FPSCR, %0" : : "r" (reg) : "memory");
   SCB_FPDSCR = reg;
-
-  /* CPU mode initialization, enforced FPCA bit.*/
-  reg = CRT0_CONTROL_INIT | 4;
-#else
-  /* CPU mode initialization.*/
-  reg = CRT0_CONTROL_INIT;
 #endif
-  asm volatile ("msr     CONTROL, %0" : : "r" (reg));
-  asm volatile ("isb");
+
+#if CRT0_INIT_STACKS
+  /* Main stack initialization.*/
+  fill32(&__main_stack_base__,
+         &__main_stack_end__,
+         CRT0_STACKS_FILL_PATTERN);
+#endif
+
+  /* Prevent aliasing and reordering related issues.*/
+  asm volatile ("" : : : "memory");
 
   /* Early initialization hook invocation.*/
   __early_init();
 
-#if CRT0_INIT_STACKS
-  /* Main and Process stacks initialization.*/
-  fill32(&__main_stack_base__,
-         &__main_stack_end__,
-         CRT0_STACKS_FILL_PATTERN);
-  fill32(&__process_stack_base__,
-         &__process_stack_end__,
-         CRT0_STACKS_FILL_PATTERN);
-#endif
+  /* Prevent aliasing and reordering related issues.*/
+  asm volatile ("" : : : "memory");
 
 #if CRT0_INIT_DATA
   /* DATA segment initialization.*/
@@ -326,6 +292,9 @@ void ResetHandler(void) {
   /* BSS segment initialization.*/
   fill32(&_bss_start, &_bss_end, 0);
 #endif
+
+  /* Prevent aliasing and reordering related issues.*/
+  asm volatile ("" : : : "memory");
 
   /* Late initialization hook invocation.*/
   __late_init();

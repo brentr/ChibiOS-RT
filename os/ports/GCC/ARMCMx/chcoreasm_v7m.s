@@ -1,4 +1,4 @@
-/*
+/*  See http://www.chibios.com/forum/viewtopic.php?f=2&t=1101
     ChibiOS/RT - Copyright (C) 2006,2007,2008,2009,2010,
                  2011,2012,2013 Giovanni Di Sirio.
     This file is part of ChibiOS/RT.
@@ -39,6 +39,19 @@
 #ifndef CORTEX_SIMPLIFIED_PRIORITY
 #error  assembler needs to know CORTEX_SIMPLIFIED_PRIORITY
 #endif
+
+#ifndef CRT0_INIT_STACKS
+#error assembler needs to know CRT0_INIT_STACKS
+#endif
+/*
+ * Control special register initialization value.
+ * The system is setup to run in privileged mode using the PSP
+ * stack (dual stack mode).
+ */
+#if !defined(CRT0_CONTROL_INIT)
+#define CRT0_CONTROL_INIT           0x00000002
+#endif
+
 /*
  * Performs a context switch between two threads.
  */
@@ -105,3 +118,30 @@ _port_exit_from_isr:
 #else
                 svc     #0
 #endif
+
+
+/*
+ * Reset handler
+ */
+.global ResetHandler
+.type ResetHandler, %function
+.thumb_func
+ResetHandler:
+         /* The processor enters Thread mode when it comes out of reset.
+            Out of reset, all code uses the main stack.*/
+         cpsid   i
+         /* Process Stack initialization, it is allocated starting from the
+            symbol __process_stack_end__ and its lower limit is the symbol
+            __process_stack_base__.*/
+#if CRT0_INIT_STACKS
+         bl _init_process_stack
+#endif
+         movw    r0, #:lower16:__process_stack_end__
+         movt    r0, #:upper16:__process_stack_end__
+         msr     PSP, r0
+         mov     r1, #CRT0_CONTROL_INIT
+         msr     CONTROL, r1
+         isb
+         /* Running on process stack.*/
+         b _start
+
