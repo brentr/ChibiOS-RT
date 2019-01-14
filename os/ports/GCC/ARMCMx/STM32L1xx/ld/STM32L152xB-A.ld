@@ -12,8 +12,8 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-    
-    Revised:  1/12/19 brent@mbari.org -- added 16kB RAM and flash extent symbols
+
+    Revised:  1/13/19 brent@mbari.org -- added 16kB RAM and flash extent symbols
 */
 
 /*
@@ -96,15 +96,15 @@ SECTIONS
     {
         *(.eh_frame)
     } > flash
-    
+
     .textalign : ONLY_IF_RO
     {
         . = ALIGN(8);
     } > flash
 
     . = ALIGN(4);
-    _etext = .;
-    _textdata = _etext;
+    _textdata = .;
+    _etext = . + SIZEOF(.data);  /* past textdata */
 
     .stacks :
     {
@@ -141,7 +141,7 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
         PROVIDE(_bss_end = .);
-    } > ram    
+    } > ram
 }
 
 PROVIDE(end = .);
