@@ -13,7 +13,7 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 
-    Revised:  1/13/19 brent@mbari.org -- added 16kB RAM and flash extent symbols
+    Revised:  1/25/19 brent@mbari.org -- limited heap size
 */
 
 /*
@@ -22,9 +22,16 @@
 __main_stack_size__     = 0x0400;
 __process_stack_size__  = 0x0400;
 
+/* Override __heap_size__ to reserve desired heap size */
+__heap_size__           = DEFINED(__heap_size__) ? __heap_size__ : 0;
+
+/* A bootloader links with appOffset == 0
+   appOffset should point well past bootloader end when linking apps  */
+appOffset = DEFINED(start) ? appOffset : 0;
+
 MEMORY
 {
-    flash : org = 0x08000000, len = 128k
+    flash : org = 0x08000000 + appOffset, len = 128k - appOffset
     ram : org = 0x20000000, len = 32k
 }
 
@@ -36,11 +43,11 @@ __flash_start__         = ORIGIN(flash);
 __flash_size__          = LENGTH(flash);
 __flash_end__           = __flash_start__ + __flash_size__;
 
+
 ENTRY(ResetHandler)
 
 SECTIONS
 {
-    . = 0;
     _text = .;
 
     startup : ALIGN(16) SUBALIGN(16)
@@ -141,11 +148,12 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
         PROVIDE(_bss_end = .);
+        __heap_base__ = .;
+        . += __heap_size__;
+        __heap_end__ = .;
+        _eram = .;
     } > ram
 }
 
 PROVIDE(end = .);
 _end            = .;
-
-__heap_base__   = _end;
-__heap_end__    = __ram_end__;
