@@ -120,7 +120,9 @@ void PendSVVector(void) {
 void _port_init(void) {
 
   /* Initialization of the vector table and priority related settings.*/
+#if 0  //do *not* set VTOR as if prevents using a bootloader to load app image
   SCB_VTOR = CORTEX_VTOR_INIT;
+#endif
   SCB_AIRCR = AIRCR_VECTKEY | AIRCR_PRIGROUP(CORTEX_PRIGROUP_INIT);
 
   /* Initialization of the system vectors used by the port.*/
