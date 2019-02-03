@@ -58,14 +58,14 @@ __ram_size__            = LENGTH(ram);
 __ram_end__             = __ram_start__ + __ram_size__;
 
 
-ENTRY(__vectors_start__)
+ENTRY(ResetHandler)
 
 SECTIONS
 {
     vectors : ALIGN(256)
     {
         KEEP(*(vectors))
-        . = __vectors_size__ - 8;
+        . = __vectors_size__ - 12;
         KEEP(*(textSegment))
     } > vectors
 
@@ -119,10 +119,12 @@ SECTIONS
         *(.eh_frame)
     } > flash
 
+/***  Enabling this can result in a 4 byte hold between .text and .data ***
     .textalign : ONLY_IF_RO
     {
         . = ALIGN(8);
     } > flash
+*/
 
     . = ALIGN(4);
     _textdata = .;
