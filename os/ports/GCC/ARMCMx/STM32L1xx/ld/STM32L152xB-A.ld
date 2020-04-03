@@ -119,7 +119,7 @@ SECTIONS
         *(.eh_frame)
     } > flash
 
-/***  Enabling this can result in a 4 byte hold between .text and .data ***
+/***  Enabling this can result in a 4 byte hole between .text and .data ***
     .textalign : ONLY_IF_RO
     {
         . = ALIGN(8);

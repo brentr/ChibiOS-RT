@@ -133,12 +133,12 @@ ResetHandler:
          /* Process Stack initialization, it is allocated starting from the
             symbol __process_stack_end__ and its lower limit is the symbol
             __process_stack_base__.*/
-#if CRT0_INIT_STACKS
-         bl _init_process_stack
-#endif
          movw    r0, #:lower16:__process_stack_end__
          movt    r0, #:upper16:__process_stack_end__
          msr     PSP, r0
+#if CRT0_INIT_STACKS
+         bl _init_process_stack
+#endif
          mov     r1, #CRT0_CONTROL_INIT
          msr     CONTROL, r1
          isb

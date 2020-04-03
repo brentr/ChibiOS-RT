@@ -34,6 +34,7 @@
  */
 
 #include "ch.h"
+#include <alloca.h>
 
 typedef void (*funcp_t)(void);
 typedef funcp_t * funcpp_t;
@@ -234,9 +235,7 @@ void _default_exit(void) {
 #if CRT0_INIT_STACKS
 void _init_process_stack(void)
 {
-    fill32(&__process_stack_base__,
-         &__process_stack_end__,
-         CRT0_STACKS_FILL_PATTERN);
+    fill32(&__process_stack_base__, alloca(0), CRT0_STACKS_FILL_PATTERN);
 }
 #endif
 
