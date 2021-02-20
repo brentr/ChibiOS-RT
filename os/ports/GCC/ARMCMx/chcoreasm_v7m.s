@@ -102,14 +102,8 @@ _port_switch:
                 .thumb_func
                 .globl  _port_thread_start
 _port_thread_start:
-#if CH_DBG_ENABLE_STACK_CHECK && PORT_ENABLE_GUARD_PAGES
-                bl      _port_set_region
-#endif
 #if CH_DBG_SYSTEM_STATE_CHECK
                 bl      dbg_check_unlock
-#endif
-#if CH_DBG_STATISTICS
-                bl      _stats_stop_measure_crit_thd
 #endif
 #if CORTEX_SIMPLIFIED_PRIORITY
                 cpsie   i
@@ -130,9 +124,6 @@ _zombies:       b       _zombies
                 .thumb_func
                 .globl  _port_switch_from_isr
 _port_switch_from_isr:
-#if CH_DBG_STATISTICS
-                bl      _stats_start_measure_crit_thd
-#endif
 #if CH_DBG_SYSTEM_STATE_CHECK
                 bl      dbg_check_lock
 #endif
